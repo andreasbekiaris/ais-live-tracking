@@ -1,0 +1,6 @@
+@InfraAis_HostAddress = http://localhost:5073
+
+GET {{InfraAis_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
