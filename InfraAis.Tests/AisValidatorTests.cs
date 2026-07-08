@@ -125,4 +125,37 @@ public class AisValidatorTests
         var slightlyAhead = DateTime.UtcNow.AddMinutes(2);
         Assert.True(AisValidator.IsNotFutureSkewed(slightlyAhead, 5));
     }
+    [Theory]
+    [InlineData(0)]
+    [InlineData(5)]
+    [InlineData(15)]
+    public void NormalizeNavStatus_ReturnsValue_ForValidCodes(int code)
+    {
+        Assert.Equal(code, AisValidator.NormalizeNavStatus(code));
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(16)]
+    [InlineData(200)]
+    public void NormalizeNavStatus_ReturnsNull_ForInvalidCodes(int code)
+    {
+        Assert.Null(AisValidator.NormalizeNavStatus(code));
+    }
+
+
+    [Fact]
+    public void NormalizeRateOfTurn_ReturnsNull_ForSentinel()
+    {
+        Assert.Null(AisValidator.NormalizeRateOfTurn(-128));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-127)]
+    [InlineData(127)]
+    public void NormalizeRateOfTurn_ReturnsValue_ForValidRange(int rot)
+    {
+        Assert.Equal((short)rot, AisValidator.NormalizeRateOfTurn(rot));
+    }
 }

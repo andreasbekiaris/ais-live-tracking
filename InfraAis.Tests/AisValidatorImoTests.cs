@@ -14,14 +14,14 @@ public class AisValidatorImoTests
         Assert.True(AisValidator.IsValidImo(imo));
     }
 
-   [Theory]
-[InlineData(9074728)]
-[InlineData(9074720)]
-[InlineData(9704610)]
-public void IsValidImo_ReturnsFalse_ForBadChecksums(int imo)
-{
-    Assert.False(AisValidator.IsValidImo(imo));
-}
+    [Theory]
+    [InlineData(9074728)]
+    [InlineData(9074720)]
+    [InlineData(9704610)]
+    public void IsValidImo_ReturnsFalse_ForBadChecksums(int imo)
+    {
+        Assert.False(AisValidator.IsValidImo(imo));
+    }
 
     [Theory]
     [InlineData(0)]

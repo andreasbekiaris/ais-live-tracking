@@ -1,4 +1,5 @@
 namespace InfraAis.Validation;
+
 using System.Globalization;
 public class AisValidator
 {
@@ -14,18 +15,25 @@ public class AisValidator
     }
     public static decimal? NormalizeSog(double sog)
     {
-        return sog == 102.3 ? null : (decimal)sog;
+        if (sog < 0 || sog == 102.3) return null;
+        return (decimal)sog;
     }
 
     public static decimal? NormalizeCog(double cog)
     {
-        return cog == 360 ? null : (decimal)cog;
+        return (cog < 0 || cog >= 360) ? null : (decimal)cog;
     }
-
-
+    public static int? NormalizeNavStatus(int navStatus)
+    {
+        return (navStatus < 0 || navStatus > 15) ? null : navStatus;
+    }
+    public static short? NormalizeRateOfTurn(int rateOfTurn)
+    {
+        return (rateOfTurn < -127 || rateOfTurn > 127) ? null : (short)rateOfTurn;
+    }
     public static short? NormalizeHeading(int heading)
     {
-        return heading == 511 ? null : (short)heading;
+        return (heading < 0 || heading > 359) ? null : (short)heading;
     }
     public static bool IsValidImo(int imo)
     {
@@ -84,5 +92,7 @@ public class AisValidator
     public static bool IsNotFutureSkewed(DateTime utc, int maxSkewMinutes)
     {
         return utc <= DateTime.UtcNow.AddMinutes(maxSkewMinutes);
+
     }
+
 }
