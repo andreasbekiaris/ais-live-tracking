@@ -59,12 +59,9 @@ public class AisValidator
         if (string.IsNullOrWhiteSpace(raw))
             return false;
 
-
         var cleaned = raw.Replace(" UTC", "").Trim();
 
-
         cleaned = TrimFraction(cleaned);
-
 
         return DateTime.TryParseExact(
             cleaned,
@@ -73,7 +70,6 @@ public class AisValidator
             DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal,
             out utc);
     }
-
 
     private static string TrimFraction(string s)
     {
@@ -85,7 +81,6 @@ public class AisValidator
 
         int fracLen = end - (dot + 1);
         if (fracLen <= 7) return s;
-
 
         return s.Substring(0, dot + 1 + 7) + s.Substring(end);
     }

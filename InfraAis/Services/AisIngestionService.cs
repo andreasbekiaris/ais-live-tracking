@@ -15,6 +15,7 @@ public class AisIngestionService : BackgroundService
 
     private readonly IngestionOptions _ingestion;
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly IHostEnvironment _environment;
     private long _received;
     private long _stored;
     private long _rejected;
@@ -24,12 +25,14 @@ public class AisIngestionService : BackgroundService
      ILogger<AisIngestionService> logger,
      IOptions<AisStreamOptions> options,
      IOptions<IngestionOptions> ingestion,
-      IServiceScopeFactory scopeFactory)
+      IServiceScopeFactory scopeFactory,
+      IHostEnvironment environment)
     {
         _logger = logger;
         _options = options.Value;
         _ingestion = ingestion.Value;
         _scopeFactory = scopeFactory;
+        _environment = environment;
     }
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
@@ -45,7 +48,6 @@ public class AisIngestionService : BackgroundService
             try
             {
                 await ConnectAndListenAsync(stoppingToken);
-
 
                 delay = _ingestion.ReconnectBaseDelaySeconds;
             }
@@ -70,6 +72,20 @@ public class AisIngestionService : BackgroundService
     private async Task ConnectAndListenAsync(CancellationToken stoppingToken)
     {
         using var ws = new ClientWebSocket();
+
+        if (_options.DangerouslyAcceptInvalidFeedCertificate && _environment.IsDevelopment())
+        {
+            _logger.LogWarning(
+                "TLS certificate validation is DISABLED for the AIS feed (development only). " +
+                "Unset AisStream:DangerouslyAcceptInvalidFeedCertificate once the upstream certificate is renewed.");
+            ws.Options.RemoteCertificateValidationCallback = (_, _, _, _) => true;
+        }
+        else if (_options.DangerouslyAcceptInvalidFeedCertificate)
+        {
+            _logger.LogError(
+                "AisStream:DangerouslyAcceptInvalidFeedCertificate is set but the environment is {Environment}, not Development. " +
+                "Certificate validation stays ENABLED.", _environment.EnvironmentName);
+        }
 
         _logger.LogInformation("Connecting to AIS feed: {Url}", _options.Url);
         await ws.ConnectAsync(new Uri(_options.Url), stoppingToken);
@@ -196,8 +212,8 @@ public class AisIngestionService : BackgroundService
             Sog = sog,
             Cog = cog,
             TrueHeading = heading,
-            navStatus = pr.NavigationalStatus,
-            rateOfTurn = pr.RateOfTurn,
+            NavStatus = navStatus,
+            RateOfTurn = rateOfTurn,
             PositionAccuracy = pr.PositionAccuracy,
             MsgTimestampUtc = ts
         });
@@ -215,15 +231,22 @@ public class AisIngestionService : BackgroundService
         using var scope = _scopeFactory.CreateScope();
         var repo = scope.ServiceProvider.GetRequiredService<IAisRepository>();
 
-        await repo.UpsertVesselAsync(new VesselRecord
-        {
-            Mmsi = sd.UserID,
-            Imo = imo,
-            Name = sd.Name,
-            CallSign = sd.CallSign,
-            ShipType = sd.Type,
-            TimestampUtc = DateTime.UtcNow
-        });
+       await repo.UpsertVesselAsync(new VesselRecord
+{
+    Mmsi = sd.UserID,
+    Imo = imo,
+    Name = sd.Name,
+    CallSign = sd.CallSign,
+    ShipType = sd.Type,
+    DimToBow = (short?)sd.Dimension?.A,
+    DimToStern = (short?)sd.Dimension?.B,
+    DimToPort = (short?)sd.Dimension?.C,
+    DimToStarboard = (short?)sd.Dimension?.D,
+    Draught = sd.MaximumStaticDraught > 0 ? (decimal)sd.MaximumStaticDraught : null,
+    Destination = string.IsNullOrWhiteSpace(sd.Destination) ? null : sd.Destination.Trim(),
+    Eta = BuildEta(sd.Eta),
+    TimestampUtc = DateTime.UtcNow
+});
         _staticStored++;
         _logger.LogInformation("STATIC STORED: MMSI={Mmsi} IMO={Imo} Name={Name}", sd.UserID, imo, sd.Name);
     }
@@ -255,4 +278,20 @@ public class AisIngestionService : BackgroundService
             _logger.LogError(ex, "Summary loop crashed!");
         }
     }
+private static DateTime? BuildEta(Eta? eta)
+{
+    if (eta is null) return null;
+    if (eta.Month is < 1 or > 12 || eta.Day is < 1 or > 31) return null;
+    if (eta.Hour > 23 || eta.Minute > 59) return null;
+
+    var year = DateTime.UtcNow.Year;
+    try
+    {
+        return new DateTime(year, eta.Month, eta.Day, eta.Hour, eta.Minute, 0, DateTimeKind.Utc);
+    }
+    catch (ArgumentOutOfRangeException)
+    {
+        return null;
+    }
+}
 }

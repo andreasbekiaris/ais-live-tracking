@@ -9,6 +9,8 @@ public class AisStreamOptions
     public string ApiKey { get; set; } = "";
     public BoundingBoxOptions BoundingBox { get; set; } = new();
     public string[] FilterMessageTypes { get; set; } = [];
+
+    public bool DangerouslyAcceptInvalidFeedCertificate { get; set; }
 }
 
 public class BoundingBoxOptions

@@ -2,14 +2,12 @@ using System.Text.Json.Serialization;
 
 namespace InfraAis.Models;
 
-
 public class AisMessage
 {
     public string MessageType { get; set; } = "";
     public MessageBody Message { get; set; } = new();
     public MetaData MetaData { get; set; } = new();
 }
-
 
 public class MessageBody
 {
@@ -38,6 +36,26 @@ public class ShipStaticData
     public string CallSign { get; set; } = "";
     public string Name { get; set; } = "";
     public int Type { get; set; }
+    public Dimension? Dimension { get; set; }
+    public string Destination { get; set; } = "";
+    public double MaximumStaticDraught { get; set; }
+    public Eta? Eta { get; set; }
+}
+
+public class Dimension
+{
+    public int A { get; set; }
+    public int B { get; set; }
+    public int C { get; set; }
+    public int D { get; set; }
+}
+
+public class Eta
+{
+    public int Month { get; set; }
+    public int Day { get; set; }
+    public int Hour { get; set; }
+    public int Minute { get; set; }
 }
 
 public class MetaData

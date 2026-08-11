@@ -143,7 +143,6 @@ public class AisValidatorTests
         Assert.Null(AisValidator.NormalizeNavStatus(code));
     }
 
-
     [Fact]
     public void NormalizeRateOfTurn_ReturnsNull_ForSentinel()
     {
