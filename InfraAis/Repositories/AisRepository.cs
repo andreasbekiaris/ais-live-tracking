@@ -121,6 +121,7 @@ await using var conn = new SqlConnection(_connectionString);
 
     await using var cmd = new SqlCommand(@"SELECT mmsi FROM vessels WHERE imo = @imo;",conn);
         cmd.Parameters.AddWithValue("@imo", imo);
+        
         var result = await cmd.ExecuteScalarAsync();
         return result is null ? null : Convert.toInt64(result);
     

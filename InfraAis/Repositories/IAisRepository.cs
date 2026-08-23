@@ -8,5 +8,6 @@ public interface IAisRepository
     Task InsertPositionAsync(PositionRecord position);
     Task InsertDeadLetterAsync(string rawPayload, string reason);
 
+
     Task GetMmsiByImoAsync(int imo);
 }
