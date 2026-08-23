@@ -1,57 +1,59 @@
-using InfraAis.Models;
-using InfraAis.Repositories;
-
 namespace InfraAis.Services;
 
-public interface IVesselIdentifierResolver
-{
-    VesselIdentifier? Parse(string rawIdentifier, string? idTypeOverride);
 
-    Task<long?> ResolveToMmsiAsync(VesselIdentifier identifier);
+
+public class  VesselIdentifierResolver : IvesselIdentifierResolver
+{
+    private readonly IAisRepository _repo ;
+public VesselIdentifierResolver(IAisRepository repo  , ILogger logger)
+{
+_repo = repo ;
+_logger = logger;
 }
 
-public class VesselIdentifierResolver : IVesselIdentifierResolver
+public VesselIdentifier? Parse(string rawidentifier, string? idtypeoveride)
 {
-    private readonly IAisRepository _repo;
+if (!long.TryParse(rawidentifier, out long value))
+{
+    _logger.LogWarning("Invalid MMSI OR IMO: {Raw}", message.Mmsi);
+    return null; 
+    
+}
+var digits = Value.trim().length;
 
-    public VesselIdentifierResolver(IAisRepository repo)
-    {
-        _repo = repo;
-    }
+if(idtypeoveride is not null)
+{
+switch(idtypeoveride.ToLowerInvariant())
+{
+    case "mmsi":
+    return digits == 9 ? new VesselIdentifier{Type = IdentifierType.Mmsi,Value = value}: null ;
+    case "imo":
+    return digits == 7 ? new VesselIdentifier{Type = IdentifierType.Imo,Value = value}: null;
+    default:
+    return null;
+}
+}
+else
+{
+switch (digits)
+{
+    case 9:
+return  new VesselIdentifier{Type = IdentifierType.Mmsi,Value = value} ;
+case 7:
+return  new VesselIdentifier{Type = IdentifierType.Imo,Value = value} ;
+default:
+return null;
+}
+}
 
-    public VesselIdentifier? Parse(string rawIdentifier, string? idTypeOverride)
-    {
-        if (!long.TryParse(rawIdentifier, out var value) || value <= 0)
-            return null;
 
-        var digits = rawIdentifier.Trim().Length;
-
-        if (idTypeOverride is not null)
-        {
-            switch (idTypeOverride.ToLowerInvariant())
-            {
-                case "mmsi":
-                    return digits == 9 ? new VesselIdentifier { Type = IdentifierType.Mmsi, Value = value } : null;
-                case "imo":
-                    return digits == 7 ? new VesselIdentifier { Type = IdentifierType.Imo, Value = value } : null;
-                default:
-                    return null;
-            }
-        }
-
-        return digits switch
-        {
-            9 => new VesselIdentifier { Type = IdentifierType.Mmsi, Value = value },
-            7 => new VesselIdentifier { Type = IdentifierType.Imo, Value = value },
-            _ => null
-        };
-    }
-
-    public async Task<long?> ResolveToMmsiAsync(VesselIdentifier identifier)
-    {
-        if (identifier.Type == IdentifierType.Mmsi)
-            return identifier.Value;
-
-        return await _repo.GetMmsiByImoAsync((int)identifier.Value);
-    }
+}
+public async task<long?> ResolveToMmsi(VesselIdentifier identifier)
+{
+if(identifier.Type == IdentifierType.Mmsi)
+{
+    return  identifier.Value;
+}
+return await_repo.GetMmsiByImoAsync((int) identifier.Value);
+}
 }

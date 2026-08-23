@@ -15,7 +15,6 @@ builder.Services
     .AddOptions<AisDbOptions>()
     .Bind(builder.Configuration.GetSection(AisDbOptions.SectionName));
 builder.Services.AddScoped<IAisRepository, AisRepository>();
-builder.Services.AddScoped<IVesselIdentifierResolver, VesselIdentifierResolver>();
 
 var app = builder.Build();
 
