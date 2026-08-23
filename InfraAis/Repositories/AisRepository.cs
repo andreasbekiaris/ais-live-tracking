@@ -114,92 +114,15 @@ VALUES (@RawPayload, @Reason);";
         await cmd.ExecuteNonQueryAsync();
 
     }
-    public async Task<long?> GetMmsiByImoAsync(int imo)
-{
-    await using var conn = new SqlConnection(_connectionString);
-    await conn.OpenAsync();
-
-    const string sql = @"SELECT mmsi FROM vessels WHERE imo = @Imo;";
-
-    await using var cmd = new SqlCommand(sql, conn);
-    cmd.Parameters.Add("@Imo", SqlDbType.Int).Value = imo;
-
-    var result = await cmd.ExecuteScalarAsync();
-    return result is null ? null : (long)result;
-}
-
-public async Task<LatestPositionRecord?> GetLatestPositionAsync(long mmsi)
-{
-    await using var conn = new SqlConnection(_connectionString);
-    await conn.OpenAsync();
-
-    const string sql = @"
-SELECT TOP (1)
-    p.mmsi, p.latitude, p.longitude, p.sog, p.cog, p.nav_status, p.msg_timestamp_utc,
-    v.imo, v.name
-FROM positions p
-JOIN vessels v ON v.mmsi = p.mmsi
-WHERE p.mmsi = @Mmsi
-ORDER BY p.msg_timestamp_utc DESC;";
-
-    await using var cmd = new SqlCommand(sql, conn);
-    cmd.Parameters.Add("@Mmsi", SqlDbType.BigInt).Value = mmsi;
-
-    await using var reader = await cmd.ExecuteReaderAsync();
-    if (!await reader.ReadAsync())
-        return null;
-
-    return new LatestPositionRecord
+    public async task<long?> GetMmsiByImoAsync(int imo)
     {
-        Mmsi = reader.GetInt64(reader.GetOrdinal("mmsi")),
-        Latitude = reader.GetDouble(reader.GetOrdinal("latitude")),
-        Longitude = reader.GetDouble(reader.GetOrdinal("longitude")),
-        Sog = reader.IsDBNull(reader.GetOrdinal("sog")) ? null : reader.GetDecimal(reader.GetOrdinal("sog")),
-        Cog = reader.IsDBNull(reader.GetOrdinal("cog")) ? null : reader.GetDecimal(reader.GetOrdinal("cog")),
-        NavStatus = reader.IsDBNull(reader.GetOrdinal("nav_status")) ? null : reader.GetByte(reader.GetOrdinal("nav_status")),
-        MsgTimestampUtc = reader.GetDateTime(reader.GetOrdinal("msg_timestamp_utc")),
-        Imo = reader.IsDBNull(reader.GetOrdinal("imo")) ? null : reader.GetInt32(reader.GetOrdinal("imo")),
-        Name = reader.IsDBNull(reader.GetOrdinal("name")) ? null : reader.GetString(reader.GetOrdinal("name"))
-    };
-}
+await using var conn = new SqlConnection(_connectionString);
+        await conn.OpenAsync();
 
-public async Task<VesselRecord?> GetVesselAsync(long mmsi)
-{
-    await using var conn = new SqlConnection(_connectionString);
-    await conn.OpenAsync();
-
-    const string sql = @"
-SELECT mmsi, imo, name, call_sign, ship_type,
-       dim_to_bow, dim_to_stern, dim_to_port, dim_to_starboard,
-       draught, destination, eta,
-       first_seen_utc, last_seen_utc
-FROM vessels
-WHERE mmsi = @Mmsi;";
-
-    await using var cmd = new SqlCommand(sql, conn);
-    cmd.Parameters.Add("@Mmsi", SqlDbType.BigInt).Value = mmsi;
-
-    await using var reader = await cmd.ExecuteReaderAsync();
-    if (!await reader.ReadAsync())
-        return null;
-
-    return new VesselRecord
-    {
-        Mmsi = reader.GetInt64(reader.GetOrdinal("mmsi")),
-        Imo = reader.IsDBNull(reader.GetOrdinal("imo")) ? null : reader.GetInt32(reader.GetOrdinal("imo")),
-        Name = reader.IsDBNull(reader.GetOrdinal("name")) ? null : reader.GetString(reader.GetOrdinal("name")),
-        CallSign = reader.IsDBNull(reader.GetOrdinal("call_sign")) ? null : reader.GetString(reader.GetOrdinal("call_sign")),
-        ShipType = reader.IsDBNull(reader.GetOrdinal("ship_type")) ? null : reader.GetInt16(reader.GetOrdinal("ship_type")),
-        DimToBow = reader.IsDBNull(reader.GetOrdinal("dim_to_bow")) ? null : reader.GetInt16(reader.GetOrdinal("dim_to_bow")),
-        DimToStern = reader.IsDBNull(reader.GetOrdinal("dim_to_stern")) ? null : reader.GetInt16(reader.GetOrdinal("dim_to_stern")),
-        DimToPort = reader.IsDBNull(reader.GetOrdinal("dim_to_port")) ? null : reader.GetInt16(reader.GetOrdinal("dim_to_port")),
-        DimToStarboard = reader.IsDBNull(reader.GetOrdinal("dim_to_starboard")) ? null : reader.GetInt16(reader.GetOrdinal("dim_to_starboard")),
-        Draught = reader.IsDBNull(reader.GetOrdinal("draught")) ? null : reader.GetDecimal(reader.GetOrdinal("draught")),
-        Destination = reader.IsDBNull(reader.GetOrdinal("destination")) ? null : reader.GetString(reader.GetOrdinal("destination")),
-        Eta = reader.IsDBNull(reader.GetOrdinal("eta")) ? null : reader.GetDateTime(reader.GetOrdinal("eta")),
-        TimestampUtc = reader.GetDateTime(reader.GetOrdinal("last_seen_utc")),
-        FirstSeenUtc = reader.GetDateTime(reader.GetOrdinal("first_seen_utc")),
-        LastSeenUtc = reader.GetDateTime(reader.GetOrdinal("last_seen_utc")),
-    };
-}
+    await using var cmd = new SqlCommand(@"SELECT mmsi FROM vessels WHERE imo = @imo;",conn);
+        cmd.Parameters.AddWithValue("@imo", imo);
+        var result = await cmd.ExecuteScalarAsync();
+        return result is null ? null : Convert.toInt64(result);
+    
+            }
 }
