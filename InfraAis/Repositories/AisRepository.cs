@@ -121,9 +121,45 @@ await using var conn = new SqlConnection(_connectionString);
 
     await using var cmd = new SqlCommand(@"SELECT mmsi FROM vessels WHERE imo = @imo;",conn);
         cmd.Parameters.AddWithValue("@imo", imo);
-        
+
         var result = await cmd.ExecuteScalarAsync();
         return result is null ? null : Convert.toInt64(result);
     
             }
+
+    public async Task<LatestPositionRecord> GetLatestPositionAsync(long Mmsi)
+    {
+wait using var conn = new SqlConnection(_connectionString);
+        await conn.OpenAsync();
+        const string sql = @"SELECT TOP (1)
+    p.mmsi, p.latitude, p.longitude, p.sog, p.cog, p.nav_status, p.msg_timestamp_utc
+FROM positions p
+WHERE p.mmsi = @mmsi
+ORDER BY p.msg_timestamp_utc DESC;";
+
+await using var cmd = new SqlConnection(sql,conn);
+cmd.Parameters.AddWithValue("@mmsi",Mmsi);
+var result = await cmd.ExecuteScalarAsync();
+
+if(!await reader.ReadAsync())
+
+return null; 
+return new LatestPositionRecord
+    {
+        Mmsi = reader.GetInt64(reader.GetOrdinal("mmsi")),
+        Latitude = reader.GetDouble(reader.GetOrdinal("latitude")),
+        Longitude = reader.GetDouble(reader.GetOrdinal("longitude")),
+        Sog = reader.IsDBNull(reader.GetOrdinal("sog")) ? null : reader.GetDecimal(reader.GetOrdinal("sog")),
+        Cog = reader.IsDBNull(reader.GetOrdinal("cog")) ? null : reader.GetDecimal(reader.GetOrdinal("cog")),
+        NavStatus = reader.IsDBNull(reader.GetOrdinal("nav_status")) ? null : reader.GetByte(reader.GetOrdinal("nav_status")),
+        MsgTimestampUtc = reader.GetDateTime(reader.GetOrdinal("msg_timestamp_utc")),
+        Imo = reader.IsDBNull(reader.GetOrdinal("imo")) ? null : reader.GetInt32(reader.GetOrdinal("imo")),
+        Name = reader.IsDBNull(reader.GetOrdinal("name")) ? null : reader.GetString(reader.GetOrdinal("name"))
+    };
+
+
+
+
+
+    }
 }
