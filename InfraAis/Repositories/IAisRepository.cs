@@ -10,4 +10,5 @@ public interface IAisRepository
 
 
     Task GetMmsiByImoAsync(int imo);
+    Task GetLatestPositionAsync(long Mmsi);
 }
