@@ -1,25 +1,24 @@
 namespace InfraAis.Services;
+using InfraAis.Repositories;
+using InfraAis.Models;
 
 
 
 public class  VesselIdentifierResolver : IvesselIdentifierResolver
 {
     private readonly IAisRepository _repo ;
-public VesselIdentifierResolver(IAisRepository repo  , ILogger logger)
+public VesselIdentifierResolver(IAisRepository repo)
 {
 _repo = repo ;
-_logger = logger;
 }
 
 public VesselIdentifier? Parse(string rawidentifier, string? idtypeoveride)
 {
 if (!long.TryParse(rawidentifier, out long value))
 {
-    _logger.LogWarning("Invalid MMSI OR IMO: {Raw}", message.Mmsi);
-    return null; 
-    
+    return null;     
 }
-var digits = Value.trim().length;
+var digits = rawidentifier.Trim().Length;
 
 if(idtypeoveride is not null)
 {
@@ -48,12 +47,12 @@ return null;
 
 
 }
-public async task<long?> ResolveToMmsi(VesselIdentifier identifier)
+public async Task<long?> ResolveToMmsiAsync(VesselIdentifier identifier)
 {
 if(identifier.Type == IdentifierType.Mmsi)
 {
     return  identifier.Value;
 }
-return await_repo.GetMmsiByImoAsync((int) identifier.Value);
+return await _repo.GetMmsiByImoAsync((int) identifier.Value);
 }
 }
