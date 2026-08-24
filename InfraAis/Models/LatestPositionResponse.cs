@@ -13,4 +13,5 @@ public class LatestPositionResponse
     public string NavStatusText { get; set; } = "";
     public DateTime TimestampUtc { get; set; }
     public double AgeSeconds { get; set; }
+    
 }
