@@ -15,4 +15,6 @@ public short? DimToStarboard { get; set; }
 public decimal? Draught { get; set; }
 public string? Destination { get; set; }
 public DateTime? Eta { get; set; }
+public DateTime? FirstSeenUtc {get; set;}
+    public DateTime? LastSeenUtc {get; set;}
 }
