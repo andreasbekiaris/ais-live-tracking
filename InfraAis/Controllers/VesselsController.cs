@@ -4,17 +4,17 @@ using InfraAis.Utils;
 using InfraAis.Models;
 using InfraAis.Services;
 using InfraAis.Repositories;
-namespace InfraAis.controllers;
+namespace InfraAis.Controllers;
 
 [ApiController]
 [Route("api/vessels")]
-public class vesselsController : ControllerBase
+public class VesselsController : ControllerBase
 {
 private  readonly IvesselIdentifierResolver _resolver;
 private readonly IAisRepository _repo;
-private readonly ILogger<vesselsController> _logger;
+private readonly ILogger<VesselsController> _logger;
 
-public vesselsController(IvesselIdentifierResolver resolver,IAisRepository repo , ILogger<vesselsController> logger)
+public VesselsController(IvesselIdentifierResolver resolver,IAisRepository repo , ILogger<VesselsController> logger)
 
 {
 _resolver = resolver ;
