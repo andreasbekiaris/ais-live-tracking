@@ -231,22 +231,22 @@ public class AisIngestionService : BackgroundService
         using var scope = _scopeFactory.CreateScope();
         var repo = scope.ServiceProvider.GetRequiredService<IAisRepository>();
 
-       await repo.UpsertVesselAsync(new VesselRecord
-{
-    Mmsi = sd.UserID,
-    Imo = imo,
-    Name = sd.Name,
-    CallSign = sd.CallSign,
-    ShipType = sd.Type,
-    DimToBow = (short?)sd.Dimension?.A,
-    DimToStern = (short?)sd.Dimension?.B,
-    DimToPort = (short?)sd.Dimension?.C,
-    DimToStarboard = (short?)sd.Dimension?.D,
-    Draught = sd.MaximumStaticDraught > 0 ? (decimal)sd.MaximumStaticDraught : null,
-    Destination = string.IsNullOrWhiteSpace(sd.Destination) ? null : sd.Destination.Trim(),
-    Eta = BuildEta(sd.Eta),
-    TimestampUtc = DateTime.UtcNow
-});
+        await repo.UpsertVesselAsync(new VesselRecord
+        {
+            Mmsi = sd.UserID,
+            Imo = imo,
+            Name = sd.Name,
+            CallSign = sd.CallSign,
+            ShipType = sd.Type,
+            DimToBow = (short?)sd.Dimension?.A,
+            DimToStern = (short?)sd.Dimension?.B,
+            DimToPort = (short?)sd.Dimension?.C,
+            DimToStarboard = (short?)sd.Dimension?.D,
+            Draught = sd.MaximumStaticDraught > 0 ? (decimal)sd.MaximumStaticDraught : null,
+            Destination = string.IsNullOrWhiteSpace(sd.Destination) ? null : sd.Destination.Trim(),
+            Eta = BuildEta(sd.Eta),
+            TimestampUtc = DateTime.UtcNow
+        });
         _staticStored++;
         _logger.LogInformation("STATIC STORED: MMSI={Mmsi} IMO={Imo} Name={Name}", sd.UserID, imo, sd.Name);
     }
@@ -278,20 +278,20 @@ public class AisIngestionService : BackgroundService
             _logger.LogError(ex, "Summary loop crashed!");
         }
     }
-private static DateTime? BuildEta(Eta? eta)
-{
-    if (eta is null) return null;
-    if (eta.Month is < 1 or > 12 || eta.Day is < 1 or > 31) return null;
-    if (eta.Hour > 23 || eta.Minute > 59) return null;
+    private static DateTime? BuildEta(Eta? eta)
+    {
+        if (eta is null) return null;
+        if (eta.Month is < 1 or > 12 || eta.Day is < 1 or > 31) return null;
+        if (eta.Hour > 23 || eta.Minute > 59) return null;
 
-    var year = DateTime.UtcNow.Year;
-    try
-    {
-        return new DateTime(year, eta.Month, eta.Day, eta.Hour, eta.Minute, 0, DateTimeKind.Utc);
+        var year = DateTime.UtcNow.Year;
+        try
+        {
+            return new DateTime(year, eta.Month, eta.Day, eta.Hour, eta.Minute, 0, DateTimeKind.Utc);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return null;
+        }
     }
-    catch (ArgumentOutOfRangeException)
-    {
-        return null;
-    }
-}
 }

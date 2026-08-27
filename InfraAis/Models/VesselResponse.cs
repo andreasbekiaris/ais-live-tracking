@@ -2,7 +2,7 @@ namespace InfraAis.Models;
 
 public class VesselResponse
 {
-public long Mmsi { get; set; }
+    public long Mmsi { get; set; }
     public int? Imo { get; set; }
     public string? Name { get; set; }
     public string? CallSign { get; set; }

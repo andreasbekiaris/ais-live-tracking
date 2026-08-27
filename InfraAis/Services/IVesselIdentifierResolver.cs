@@ -2,9 +2,9 @@ using InfraAis.Models;
 
 namespace InfraAis.Services;
 
-public interface IvesselIdentifierResolver 
+public interface IvesselIdentifierResolver
 {
- VesselIdentifier? Parse(string rawidentifier,string? idtype);
- Task<long?> ResolveToMmsiAsync(VesselIdentifier identifier);
+    VesselIdentifier? Parse(string rawidentifier, string? idtype);
+    Task<long?> ResolveToMmsiAsync(VesselIdentifier identifier);
 
 }

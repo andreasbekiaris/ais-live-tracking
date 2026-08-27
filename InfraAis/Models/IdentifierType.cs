@@ -1,7 +1,7 @@
 namespace InfraAis.Models;
 
 
-public enum IdentifierType 
+public enum IdentifierType
 {
     Mmsi,
     Imo

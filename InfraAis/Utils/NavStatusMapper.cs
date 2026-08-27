@@ -2,9 +2,10 @@
 namespace InfraAis.Utils;
 
 
-public static class NavStatusMapper{
+public static class NavStatusMapper
+{
 
-public static string ToText(int? navStatus) => navStatus switch
+    public static string ToText(int? navStatus) => navStatus switch
     {
         0 => "Under way using engine",
         1 => "At anchor",
