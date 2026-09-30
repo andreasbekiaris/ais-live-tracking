@@ -1,6 +1,7 @@
 using InfraAis.Options;
 using InfraAis.Services;
 using InfraAis.Repositories;
+using InfraAis.Validation;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
@@ -16,6 +17,7 @@ builder.Services
     .Bind(builder.Configuration.GetSection(AisDbOptions.SectionName));
 builder.Services.AddScoped<IAisRepository, AisRepository>();
 builder.Services.AddScoped<IvesselIdentifierResolver, VesselIdentifierResolver>();
+builder.Services.AddScoped<IPositionQueryValidator, PositionQueryValidator>();
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
