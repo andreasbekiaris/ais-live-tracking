@@ -45,6 +45,11 @@ CREATE INDEX IX_positions_mmsi_time
     ON positions(mmsi, msg_timestamp_utc DESC)
     INCLUDE (latitude, longitude, sog, cog, nav_status);
 
+-- Phase 3: time-first composite for windowed fleet scans (GET /api/positions).
+CREATE INDEX IX_positions_time
+    ON positions(msg_timestamp_utc)
+    INCLUDE (mmsi, latitude, longitude, sog, nav_status);
+
 CREATE TABLE ingestion_dead_letter (
     id           BIGINT        IDENTITY(1,1) PRIMARY KEY,
     raw_payload  NVARCHAR(MAX) NOT NULL,
