@@ -2,10 +2,10 @@ using InfraAis.Utils;
 using InfraAis.Models;
 using Xunit;
 
+namespace InfraAis.Tests;
+
 public class CursorCodecTests
 {
-    private readonly CursorCodec _codec = new();
-
     [Fact]
     public void Encode_Then_Decode_Returns_Same_Values()
     {
@@ -15,22 +15,37 @@ public class CursorCodecTests
             Id = 12345
         };
 
-        var result = _codec.Decode(_codec.Encode(original));
+        var result = CursorCodec.Decode(CursorCodec.Encode(original));
 
         Assert.NotNull(result);
         Assert.Equal(original.Timestamp, result.Timestamp);
         Assert.Equal(original.Id, result.Id);
     }
 
+    [Fact]
+    public void Encode_Then_Decode_Keeps_Sub_Second_Precision()
+    {
+        
+        var original = new PositionCursor
+        {
+            Timestamp = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc).AddTicks(1234567),
+            Id = 7
+        };
+
+        var result = CursorCodec.Decode(CursorCodec.Encode(original));
+
+        Assert.Equal(original.Timestamp.Ticks, result!.Timestamp.Ticks);
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("   ")]
     [InlineData("trash")]
-    [InlineData("abc")]              
-    [InlineData("gate|city")]        
+    [InlineData("abc")]
+    [InlineData("gate|city")]
     public void Decode_Returns_Null_For_Invalid_Input(string input)
     {
-        Assert.Null(_codec.Decode(input));
+        Assert.Null(CursorCodec.Decode(input));
     }
 
     [Fact]
@@ -42,8 +57,20 @@ public class CursorCodecTests
             Id = 1
         };
 
-        var result = _codec.Decode(_codec.Encode(original));
+        var result = CursorCodec.Decode(CursorCodec.Encode(original));
 
         Assert.Equal(DateTimeKind.Utc, result!.Timestamp.Kind);
+    }
+
+    [Fact]
+    public void Unspecified_Timestamp_From_Database_Is_Treated_As_Utc()
+    {
+        
+        var fromDb = new DateTime(2026, 3, 15, 8, 0, 0, DateTimeKind.Unspecified);
+
+        var result = CursorCodec.Decode(CursorCodec.Encode(new PositionCursor { Timestamp = fromDb, Id = 5 }));
+
+        Assert.Equal(DateTimeKind.Utc, result!.Timestamp.Kind);
+        Assert.Equal(fromDb.Ticks, result.Timestamp.Ticks);
     }
 }
