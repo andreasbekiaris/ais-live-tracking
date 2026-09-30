@@ -2,7 +2,7 @@ namespace InfraAis.Models;
 
 public class PositionHistoryRecord
 {
- 
+
     public long Mmsi { get; set; }
     public double Latitude { get; set; }
     public double Longitude { get; set; }

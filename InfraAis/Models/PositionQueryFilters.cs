@@ -3,7 +3,7 @@ namespace InfraAis.Models;
 
 public class PositionQueryFilters
 {
-   
+
     public IReadOnlyList<long> Mmsis { get; init; } = new List<long>();
     public IReadOnlyList<int> NavStatuses { get; init; } = new List<int>();
     public SortDirection Sort { get; init; }
@@ -14,7 +14,7 @@ public class PositionQueryFilters
     public decimal? MinSog { get; init; }
     public decimal? MaxSog { get; init; }
 
-    public PositionCursor? Cursor { get; init; }
+    public string? Cursor { get; init; }
 
-public BoundingBox? BoundingBox { get; init; }
+    public BoundingBox? BoundingBox { get; init; }
 }
