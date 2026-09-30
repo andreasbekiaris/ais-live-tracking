@@ -219,6 +219,7 @@ public class AisIngestionService : BackgroundService
         });
         _stored++;
         _logger.LogInformation("STORED: MMSI={Mmsi} Lat={Lat} Lon={Lon}", pr.UserID, pr.Latitude, pr.Longitude);
+        
     }
 
     private async Task HandleStaticData(AisMessage msg, string rawPayload)
@@ -227,10 +228,16 @@ public class AisIngestionService : BackgroundService
         if (sd is null) return;
 
         int? imo = AisValidator.IsValidImo(sd.ImoNumber) ? sd.ImoNumber : null;
-
+        
         using var scope = _scopeFactory.CreateScope();
         var repo = scope.ServiceProvider.GetRequiredService<IAisRepository>();
-
+       if(!AisValidator.IsValidMmsi(sd.UserID))
+        {
+            await repo.InsertDeadLetterAsync(rawPayload, $"bad MMSI {sd.UserID}");
+             _rejected++;
+             _logger.LogWarning("REJECT: bad MMSI={Mmsi}", sd.UserID);
+            return;
+        }
         await repo.UpsertVesselAsync(new VesselRecord
         {
             Mmsi = sd.UserID,
