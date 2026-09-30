@@ -4,7 +4,8 @@ using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Logging;
 using InfraAis.Models;
 using InfraAis.Options;
-
+using InfraAis.Utils;
+using Dapper;
 namespace InfraAis.Repositories;
 
 public class AisRepository : IAisRepository
@@ -196,4 +197,346 @@ WHERE mmsi = @Mmsi;";
             LastSeenUtc = reader.GetDateTime(reader.GetOrdinal("last_seen_utc")),
         };
     }
+
+
+    public async Task<PagedResponse> GetPositionsAsync(
+        PositionQueryFilters filters)
+    {
+        await using var conn = new SqlConnection(_connectionString);
+        await conn.OpenAsync();
+
+        var sql = $@"
+        SELECT TOP (@Limit+1)
+            mmsi AS Mmsi,
+            latitude AS Latitude,
+            longitude AS Longitude,
+            sog AS Sog,
+            cog AS Cog,
+            true_heading AS TrueHeading,
+            nav_status AS NavStatus,
+            rate_of_turn AS RateOfTurn,
+            position_accuracy AS PositionAccuracy,
+            msg_timestamp_utc AS MsgTimestampUtc,
+            id AS Id
+        FROM positions
+        WHERE 1 = 1
+    ";
+
+        var parameters = new DynamicParameters();
+
+        parameters.Add("Limit", filters.Limit);
+
+
+        if (filters.From.HasValue && filters.To.HasValue)
+        {
+            sql += @"
+            AND msg_timestamp_utc >= @From
+            AND msg_timestamp_utc < @To
+        ";
+
+            parameters.Add("From", filters.From);
+            parameters.Add("To", filters.To);
+        }
+
+
+        if (filters.BoundingBox is not null)
+        {
+            sql += @"
+            AND latitude >= @MinLat
+            AND latitude <= @MaxLat
+            AND longitude >= @MinLon
+            AND longitude <= @MaxLon
+        ";
+
+            parameters.Add("MinLat", filters.BoundingBox.MinLat);
+            parameters.Add("MaxLat", filters.BoundingBox.MaxLat);
+            parameters.Add("MinLon", filters.BoundingBox.MinLon);
+            parameters.Add("MaxLon", filters.BoundingBox.MaxLon);
+        }
+
+        if (filters.Cursor is not null)
+        {
+            var cursor = CursorCodec.Decode(filters.Cursor);
+
+            if (cursor is not null)
+            {
+                if (filters.Sort == SortDirection.Desc)
+                {
+                    sql += @"
+                AND (
+                    msg_timestamp_utc < @CursorTs
+                    OR (
+                        msg_timestamp_utc = @CursorTs
+                        AND id < @CursorId
+                    )
+                )
+            ";
+                }
+                else
+                {
+                    sql += @"
+                AND (
+                    msg_timestamp_utc > @CursorTs
+                    OR (
+                        msg_timestamp_utc = @CursorTs
+                        AND id > @CursorId
+                    )
+                )
+            ";
+                }
+
+                parameters.Add("CursorTs", cursor.Timestamp);
+                parameters.Add("CursorId", cursor.Id);
+            }
+        }
+        if (filters.Mmsis is not null && filters.Mmsis.Count > 0)
+        {
+            sql += " AND mmsi IN @Mmsis";
+            parameters.Add("Mmsis", filters.Mmsis);
+        }
+
+
+        if (filters.NavStatuses is not null && filters.NavStatuses.Count > 0)
+        {
+            sql += " AND nav_status IN @NavStatuses";
+            parameters.Add("NavStatuses", filters.NavStatuses);
+        }
+
+
+        if (filters.MinSog.HasValue)
+        {
+            sql += " AND sog >= @MinSog";
+            parameters.Add("MinSog", filters.MinSog);
+        }
+
+
+        if (filters.MaxSog.HasValue)
+        {
+            sql += " AND sog <= @MaxSog";
+            parameters.Add("MaxSog", filters.MaxSog);
+        }
+
+        var direction = filters.Sort.ToString().ToUpperInvariant();
+
+        sql += $@"
+    ORDER BY
+        msg_timestamp_utc {direction},
+        id {direction};
+";
+
+        var positions =
+        (await conn.QueryAsync<PositionHistoryRecord>(sql, parameters))
+        .ToList();
+
+        var hasMore = positions.Count > filters.Limit;
+
+        if (hasMore)
+        {
+            positions.RemoveAt(positions.Count - 1);
+        }
+
+        string? nextCursor = null;
+
+        if (hasMore && positions.Count > 0)
+        {
+            var lastPosition = positions[^1];
+
+            nextCursor = CursorCodec.Encode(
+                new PositionCursor
+                {
+                    Timestamp = lastPosition.MsgTimestampUtc,
+                    Id = lastPosition.Id
+                });
+        }
+
+        return new PagedResponse
+        {
+            Items = positions,
+            NextCursor = nextCursor,
+            Count = positions.Count
+        };
+    }
+
+  public async Task<PagedResponse> GetPositionsByMmsiAsync(
+    long mmsi,
+    PositionQueryFilters filters)
+{
+    await using var conn = new SqlConnection(_connectionString);
+    await conn.OpenAsync();
+
+    var sql = @"
+        SELECT TOP (@Limit + 1)
+            mmsi AS Mmsi,
+            latitude AS Latitude,
+            longitude AS Longitude,
+            sog AS Sog,
+            cog AS Cog,
+            true_heading AS TrueHeading,
+            nav_status AS NavStatus,
+            rate_of_turn AS RateOfTurn,
+            position_accuracy AS PositionAccuracy,
+            msg_timestamp_utc AS MsgTimestampUtc,
+            id AS Id
+        FROM positions
+        WHERE mmsi = @Mmsi
+    ";
+
+    var parameters = new DynamicParameters();
+
+    parameters.Add("Mmsi", mmsi);
+    parameters.Add("Limit", filters.Limit);
+
+    // FROM μόνο του επιτρέπεται
+    if (filters.From.HasValue)
+    {
+        sql += @"
+            AND msg_timestamp_utc >= @From
+        ";
+
+        parameters.Add("From", filters.From.Value.UtcDateTime);
+    }
+
+    // TO μόνο του επιτρέπεται
+    if (filters.To.HasValue)
+    {
+        sql += @"
+            AND msg_timestamp_utc < @To
+        ";
+
+        parameters.Add("To", filters.To.Value.UtcDateTime);
+    }
+
+    // Bounding box
+    if (filters.BoundingBox is not null)
+    {
+        sql += @"
+            AND latitude >= @MinLat
+            AND latitude <= @MaxLat
+            AND longitude >= @MinLon
+            AND longitude <= @MaxLon
+        ";
+
+        parameters.Add("MinLat", filters.BoundingBox.MinLat);
+        parameters.Add("MaxLat", filters.BoundingBox.MaxLat);
+        parameters.Add("MinLon", filters.BoundingBox.MinLon);
+        parameters.Add("MaxLon", filters.BoundingBox.MaxLon);
+    }
+
+    // Nav status
+    if (filters.NavStatuses is not null &&
+        filters.NavStatuses.Count > 0)
+    {
+        sql += @"
+            AND nav_status IN @NavStatuses
+        ";
+
+        parameters.Add("NavStatuses", filters.NavStatuses);
+    }
+
+    // Minimum SOG
+    if (filters.MinSog.HasValue)
+    {
+        sql += @"
+            AND sog >= @MinSog
+        ";
+
+        parameters.Add("MinSog", filters.MinSog);
+    }
+
+    // Maximum SOG
+    if (filters.MaxSog.HasValue)
+    {
+        sql += @"
+            AND sog <= @MaxSog
+        ";
+
+        parameters.Add("MaxSog", filters.MaxSog);
+    }
+
+    // Cursor pagination
+    if (filters.Cursor is not null)
+    {
+        var cursor = CursorCodec.Decode(filters.Cursor);
+
+        if (cursor is not null)
+        {
+            if (filters.Sort == SortDirection.Desc)
+            {
+                sql += @"
+                    AND (
+                        msg_timestamp_utc < @CursorTs
+                        OR (
+                            msg_timestamp_utc = @CursorTs
+                            AND id < @CursorId
+                        )
+                    )
+                ";
+            }
+            else
+            {
+                sql += @"
+                    AND (
+                        msg_timestamp_utc > @CursorTs
+                        OR (
+                            msg_timestamp_utc = @CursorTs
+                            AND id > @CursorId
+                        )
+                    )
+                ";
+            }
+
+            parameters.Add("CursorTs", cursor.Timestamp);
+            parameters.Add("CursorId", cursor.Id);
+        }
+    }
+
+    var direction =
+        filters.Sort.ToString().ToUpperInvariant();
+
+    sql += $@"
+        ORDER BY
+            msg_timestamp_utc {direction},
+            id {direction};
+    ";
+
+    var positions =
+        (await conn.QueryAsync<PositionHistoryRecord>(
+            sql,
+            parameters))
+        .ToList();
+
+    var hasMore =
+        positions.Count > filters.Limit;
+
+    if (hasMore)
+    {
+        positions.RemoveAt(
+            positions.Count - 1);
+    }
+
+    string? nextCursor = null;
+
+    if (hasMore && positions.Count > 0)
+    {
+        var lastPosition =
+            positions[^1];
+
+        nextCursor =
+            CursorCodec.Encode(
+                new PositionCursor
+                {
+                    Timestamp =
+                        lastPosition.MsgTimestampUtc,
+                    Id =
+                        lastPosition.Id
+                });
+    }
+
+    return new PagedResponse
+    {
+        Items = positions,
+        NextCursor = nextCursor,
+        Count = positions.Count
+    };
+}
 }
