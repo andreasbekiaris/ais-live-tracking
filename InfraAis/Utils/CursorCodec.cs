@@ -9,7 +9,10 @@ public static class CursorCodec
 
     public static string Encode(PositionCursor cursor)
     {
-        DateTime timestamp = cursor.Timestamp;
+      
+        DateTime timestamp = cursor.Timestamp.Kind == DateTimeKind.Unspecified
+            ? DateTime.SpecifyKind(cursor.Timestamp, DateTimeKind.Utc)
+            : cursor.Timestamp.ToUniversalTime();
         string textTimestamp = timestamp.ToString("o", CultureInfo.InvariantCulture);
         string encodedTimestamp = Convert.ToBase64String(Encoding.UTF8.GetBytes(textTimestamp));
 
@@ -23,7 +26,7 @@ public static class CursorCodec
 
     public static PositionCursor? Decode(string encoded)
     {
-       
+
 
         string[] parts = encoded.Split(Separator);
         if (parts.Length != 2) return null;
@@ -54,6 +57,10 @@ public static class CursorCodec
         {
             return null;
         }
+
+        timestamp = timestamp.Kind == DateTimeKind.Unspecified
+            ? DateTime.SpecifyKind(timestamp, DateTimeKind.Utc)
+            : timestamp.ToUniversalTime();
 
         return new PositionCursor
         {
