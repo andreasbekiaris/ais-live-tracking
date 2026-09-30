@@ -317,6 +317,55 @@ All SQL is parameterized with explicit `SqlDbType`; no values are concatenated i
 
 ---
 
+## Phase 3 — Position history (filters & pagination)
+
+### Endpoints
+
+```
+GET /api/vessels/{identifier}/positions   # history for one vessel (MMSI or IMO, optional ?idType=)
+GET /api/positions                        # fleet-wide query
+```
+
+### Query parameters
+
+| Param | Meaning | Notes |
+|-------|---------|-------|
+| `from` / `to` | UTC window on `msg_timestamp_utc` | ISO-8601; `from` inclusive, `to` **exclusive** |
+| `minLat` `maxLat` `minLon` `maxLon` | bounding box | all four together or none |
+| `navStatus` | nav-status codes | comma list, e.g. `0,1,5` (0–15) |
+| `minSog` / `maxSog` | speed band in knots | |
+| `mmsi` | restrict to vessels | **fleet endpoint only**, comma list |
+| `sort` | `asc` \| `desc` on time | default `desc`, case-insensitive |
+| `limit` | page size | default 100; values above **1000 are clamped to 1000** (not an error); `0` or negative → `400` |
+| `cursor` | keyset pagination token | the `nextCursor` from the previous response |
+
+### Validation rules
+
+- `from` must be ≤ `to`, otherwise `400`.
+- Bounding box: all four values or none; latitude in [-90, 90], longitude in [-180, 180]; `min` ≤ `max`.
+- **Fleet endpoint** must have a full time window (`from` **and** `to`) or a bounding box, so nobody can request every position ever.
+- **Single-vessel endpoint** needs no window (returns the latest positions first); `from` or `to` may be used alone; `mmsi` is not allowed.
+- Invalid `navStatus`, `sort`, `mmsi` or `cursor` values return `400` with a message naming the parameter.
+- Unknown IMO/MMSI on the single-vessel endpoint returns `404`.
+
+### Pagination (keyset)
+
+Rows are ordered by `(msg_timestamp_utc, id)` in the requested direction. The repository fetches `limit + 1`
+rows; if the extra row exists, the last returned row's `(timestamp, id)` is encoded into `nextCursor`
+(base64). The next request adds `WHERE (msg_timestamp_utc, id) < (@cursorTs, @cursorId)` (or `>` for `asc`),
+so deep pages cost the same as the first page — no `OFFSET`. `nextCursor` is `null` on the last page.
+
+```json
+{ "items": [ ... ], "nextCursor": "MjAyNi0w...|MTIz", "count": 100 }
+```
+
+### Indexes
+
+- `IX_positions_mmsi_time (mmsi, msg_timestamp_utc DESC)` — single-vessel history (Phase 1).
+- `IX_positions_time (msg_timestamp_utc) INCLUDE (mmsi, latitude, longitude, sog, nav_status)` — fleet windowed scans.
+
+---
+
 ## Testing
 
 Unit tests (`InfraAis.Tests`, xUnit) cover the pure validation logic, which requires no database or network:
@@ -327,6 +376,9 @@ Unit tests (`InfraAis.Tests`, xUnit) cover the pure validation logic, which requ
 - **Sentinel normalization** — SOG/COG/heading sentinels map to `NULL`; real values pass through.
 - **Timestamp parsing** — the Go-style format parses correctly; malformed input is rejected.
 - **Future-skew guard** — past and within-tolerance timestamps pass; far-future timestamps fail.
+- **Cursor codec** (Phase 3) — encode/decode round-trips, sub-second precision, UTC handling, garbage input rejected.
+- **Position query validation** (Phase 3) — inverted ranges, partial bounding box, limit clamp, nav-status/sort/mmsi/cursor parsing, fleet vs single-vessel rules, all filters composed.
+- **Positions controller** (Phase 3) — 400/404/200 paths for both endpoints; IMO is resolved to MMSI before querying.
 
 Run:
 
