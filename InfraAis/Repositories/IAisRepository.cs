@@ -12,4 +12,9 @@ public interface IAisRepository
     Task<long?> GetMmsiByImoAsync(int imo);
     Task<LatestPositionRecord?> GetLatestPositionAsync(long Mmsi);
     Task<VesselRecord?> GetVesselAsync(long mmsi);
+
+    Task<PagedResponse> GetPositionsAsync(PositionQueryFilters filters);
+
+    Task<PagedResponse> GetPositionsByMmsiAsync(long mmsi,PositionQueryFilters filters);
+
 }
