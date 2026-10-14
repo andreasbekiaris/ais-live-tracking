@@ -57,7 +57,7 @@ public class AisIngestionService : BackgroundService
             }
             catch (Exception ex)
             {
-                _reconnects++;
+                Interlocked.Increment(ref _reconnects);
                 _logger.LogError(ex, "Feed connection failed. Reconnecting in {Delay}s...", delay);
 
                 await Task.Delay(TimeSpan.FromSeconds(delay), stoppingToken);
@@ -73,19 +73,7 @@ public class AisIngestionService : BackgroundService
     {
         using var ws = new ClientWebSocket();
 
-        if (_options.DangerouslyAcceptInvalidFeedCertificate && _environment.IsDevelopment())
-        {
-            _logger.LogWarning(
-                "TLS certificate validation is DISABLED for the AIS feed (development only). " +
-                "Unset AisStream:DangerouslyAcceptInvalidFeedCertificate once the upstream certificate is renewed.");
-            ws.Options.RemoteCertificateValidationCallback = (_, _, _, _) => true;
-        }
-        else if (_options.DangerouslyAcceptInvalidFeedCertificate)
-        {
-            _logger.LogError(
-                "AisStream:DangerouslyAcceptInvalidFeedCertificate is set but the environment is {Environment}, not Development. " +
-                "Certificate validation stays ENABLED.", _environment.EnvironmentName);
-        }
+      
 
         _logger.LogInformation("Connecting to AIS feed: {Url}", _options.Url);
         await ws.ConnectAsync(new Uri(_options.Url), stoppingToken);
@@ -121,7 +109,7 @@ public class AisIngestionService : BackgroundService
             while (!result.EndOfMessage);
 
             var message = Encoding.UTF8.GetString(ms.ToArray());
-            _received++;
+            Interlocked.Increment(ref _received);
             try
             {
                 var ais = JsonSerializer.Deserialize<AisMessage>(message, _jsonOptions);
@@ -143,6 +131,22 @@ public class AisIngestionService : BackgroundService
             {
                 _logger.LogWarning("Bad message skipped: {Error}", ex.Message);
             }
+           
+catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+{
+    // Shutdown: δεν είναι σφάλμα μηνύματος, άσ' το να ανέβει
+    throw;
+}
+catch (Exception ex)
+{
+    // Οτιδήποτε άλλο: κακό μήνυμα, όχι κακή σύνδεση
+    Interlocked.Increment(ref _rejected);
+    _logger.LogError(ex, "Message handling failed, skipped.");
+
+    using var scope = _scopeFactory.CreateScope();
+    var repo = scope.ServiceProvider.GetRequiredService<IAisRepository>();
+    await repo.InsertDeadLetterAsync(message, $"handler error: {ex.GetType().Name}: {ex.Message}");
+}
         }
     }
     private async Task HandlePositionReport(AisMessage msg, string rawPayload)
@@ -156,7 +160,7 @@ public class AisIngestionService : BackgroundService
         if (!pr.Valid)
         {
             await repo.InsertDeadLetterAsync(rawPayload, "feed flagged invalid");
-            _rejected++;
+           Interlocked.Increment(ref _rejected);
             _logger.LogWarning("REJECT: feed flagged invalid. MMSI={Mmsi}", pr.UserID);
             return;
         }
@@ -164,7 +168,7 @@ public class AisIngestionService : BackgroundService
         if (!AisValidator.IsValidMmsi(pr.UserID))
         {
             await repo.InsertDeadLetterAsync(rawPayload, $"bad MMSI {pr.UserID}");
-            _rejected++;
+            Interlocked.Increment(ref _rejected);
             _logger.LogWarning("REJECT: bad MMSI={Mmsi}", pr.UserID);
             return;
         }
@@ -172,7 +176,7 @@ public class AisIngestionService : BackgroundService
         if (!AisValidator.IsValidPosition(pr.Latitude, pr.Longitude))
         {
             await repo.InsertDeadLetterAsync(rawPayload, $"bad position {pr.Latitude}/{pr.Longitude}");
-            _rejected++;
+           Interlocked.Increment(ref _rejected);
             _logger.LogWarning("REJECT: bad position Lat={Lat} Lon={Lon}", pr.Latitude, pr.Longitude);
             return;
         }
@@ -180,14 +184,14 @@ public class AisIngestionService : BackgroundService
         if (!AisValidator.TryParseTimestamp(msg.MetaData.TimeUtc, out var ts))
         {
             await repo.InsertDeadLetterAsync(rawPayload, $"unparseable timestamp '{msg.MetaData.TimeUtc}'");
-            _rejected++;
+           Interlocked.Increment(ref _rejected);
             _logger.LogWarning("REJECT: unparseable timestamp '{Ts}'", msg.MetaData.TimeUtc);
             return;
         }
         if (!AisValidator.IsNotFutureSkewed(ts, _ingestion.FutureSkewMinutes))
         {
             await repo.InsertDeadLetterAsync(rawPayload, $"future timestamp {ts:o}");
-            _rejected++;
+            Interlocked.Increment(ref _rejected);
             _logger.LogWarning("REJECT: future timestamp {Ts}", ts);
             return;
         }
@@ -217,7 +221,7 @@ public class AisIngestionService : BackgroundService
             PositionAccuracy = pr.PositionAccuracy,
             MsgTimestampUtc = ts
         });
-        _stored++;
+        Interlocked.Increment(ref _stored);
         _logger.LogInformation("STORED: MMSI={Mmsi} Lat={Lat} Lon={Lon}", pr.UserID, pr.Latitude, pr.Longitude);
         
     }
@@ -234,10 +238,35 @@ public class AisIngestionService : BackgroundService
        if(!AisValidator.IsValidMmsi(sd.UserID))
         {
             await repo.InsertDeadLetterAsync(rawPayload, $"bad MMSI {sd.UserID}");
-             _rejected++;
+             Interlocked.Increment(ref _rejected);
              _logger.LogWarning("REJECT: bad MMSI={Mmsi}", sd.UserID);
             return;
         }
+        if(imo is not null)
+        {
+        var existingMmsi =    await repo.GetMmsiByImoAsync((int)imo) ; 
+if (existingMmsi is not null && existingMmsi != sd.UserID)
+{
+    _logger.LogWarning(
+        "IMO CONFLICT: IMO={Imo} already belongs to MMSI={ExistingMmsi}. Storing NULL for MMSI={NewMmsi}",
+        imo, existingMmsi, sd.UserID);
+
+    imo = null;
+}}
+       if (!AisValidator.TryParseTimestamp(msg.MetaData.TimeUtc, out var ts))
+{
+    await repo.InsertDeadLetterAsync(rawPayload, $"unparseable timestamp '{msg.MetaData.TimeUtc}'");
+    Interlocked.Increment(ref _rejected);
+    _logger.LogWarning("REJECT: unparseable timestamp '{Ts}'", msg.MetaData.TimeUtc);
+    return;
+}
+if (!AisValidator.IsNotFutureSkewed(ts, _ingestion.FutureSkewMinutes))
+{
+    await repo.InsertDeadLetterAsync(rawPayload, $"future timestamp {ts:o}");
+    Interlocked.Increment(ref _rejected);
+    _logger.LogWarning("REJECT: future timestamp {Ts}", ts);
+    return;
+}
         await repo.UpsertVesselAsync(new VesselRecord
         {
             Mmsi = sd.UserID,
@@ -252,9 +281,9 @@ public class AisIngestionService : BackgroundService
             Draught = sd.MaximumStaticDraught > 0 ? (decimal)sd.MaximumStaticDraught : null,
             Destination = string.IsNullOrWhiteSpace(sd.Destination) ? null : sd.Destination.Trim(),
             Eta = BuildEta(sd.Eta),
-            TimestampUtc = DateTime.UtcNow
+            TimestampUtc = ts
         });
-        _staticStored++;
+        Interlocked.Increment(ref _staticStored);
         _logger.LogInformation("STATIC STORED: MMSI={Mmsi} IMO={Imo} Name={Name}", sd.UserID, imo, sd.Name);
     }
     private async Task RunSummaryLoopAsync(CancellationToken stoppingToken)
