@@ -11,11 +11,15 @@ builder.Services.AddOptions<AisStreamOptions>().Bind(builder.Configuration.GetSe
 builder.Services
     .AddOptions<IngestionOptions>()
     .Bind(builder.Configuration.GetSection(IngestionOptions.SectionName));
+    builder.Services.AddOptions<AnalyticsOptions>()
+    .Bind(builder.Configuration.GetSection(AnalyticsOptions.SectionName));
 builder.Services.AddHostedService<AisIngestionService>();
 builder.Services
     .AddOptions<AisDbOptions>()
     .Bind(builder.Configuration.GetSection(AisDbOptions.SectionName));
 builder.Services.AddScoped<IAisRepository, AisRepository>();
+builder.Services.AddScoped<IVesselAnalyticsService, VesselAnalyticsService>();
+
 builder.Services.AddScoped<IvesselIdentifierResolver, VesselIdentifierResolver>();
 builder.Services.AddScoped<IPositionQueryValidator, PositionQueryValidator>();
 var app = builder.Build();
