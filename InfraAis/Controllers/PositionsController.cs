@@ -1,8 +1,6 @@
 namespace InfraAis.Controllers;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
-using InfraAis.Utils;
-
 using InfraAis.Models;
 using InfraAis.Services;
 using InfraAis.Repositories;
@@ -18,14 +16,16 @@ public class PositionsController : ControllerBase
     private readonly ILogger<PositionsController> _logger;
     private readonly IPositionQueryValidator _positionQueryValidator ;
     private readonly IvesselIdentifierResolver _resolver;
+    private readonly IVesselAnalyticsService _vesselAnalyticsService;
 
-    public PositionsController(IAisRepository repo, ILogger<PositionsController> logger,IvesselIdentifierResolver resolver, IPositionQueryValidator positionQueryValidator)
+    public PositionsController(IAisRepository repo, ILogger<PositionsController> logger,IvesselIdentifierResolver resolver, IPositionQueryValidator positionQueryValidator, IVesselAnalyticsService vesselAnalyticsService)
     {
         
         _repo = repo;
         _logger = logger;
         _resolver = resolver;
         _positionQueryValidator =positionQueryValidator;
+        _vesselAnalyticsService = vesselAnalyticsService;
     }
     
 [HttpGet]
@@ -141,4 +141,55 @@ var result = _positionQueryValidator.Validate(query, isFleet: false);
     }
 
 }
+
+[HttpGet ("/api/vessels/{identifier}/analytics")]
+
+public async Task<ActionResult<VesselAnalyticsResponse>> GetVesselAnalyticsAsync(string identifier,[FromQuery] DateTimeOffset? from,
+    [FromQuery] DateTimeOffset? to)
+    { 
+if(identifier is null )
+        {
+            _logger.LogWarning("REJECT: malformed identifier '{Identifier}'", identifier);
+            return BadRequest(new { error = "Identifier must be a 7-digit IMO or 9-digit MMSI; idType must match." });
+        }
+
+        var parsed = _resolver.Parse(identifier, null);
+        if (parsed is null)
+        {
+            _logger.LogWarning("REJECT: malformed identifier '{Identifier}'", identifier);
+            return BadRequest(new { error = "Identifier must be a 7-digit IMO or 9-digit MMSI; idType must match." });
+        }
+
+        var mmsi = await _resolver.ResolveToMmsiAsync(parsed);
+        if (mmsi is null)
+        {
+            _logger.LogWarning("NOT FOUND: unknown IMO={Imo}", parsed.Value);
+            return NotFound(new { error = "No vessel known with this IMO." });
+        }
+
+        if (await _repo.GetVesselAsync(mmsi.Value) is null)
+        {
+            _logger.LogWarning("NOT FOUND: unknown MMSI={Mmsi}", mmsi.Value);
+            return NotFound(new { error = "No vessel known with this MMSI." });
+        }
+        var finalTo = to ?? DateTimeOffset.UtcNow;
+        var finalFrom = from ?? finalTo.AddMonths(-1);
+  
+        if(finalFrom >= finalTo){
+    
+                  _logger.LogWarning("REJECT: From={From} is later than To={To}", finalFrom, finalTo);
+            return BadRequest(new { error = "From is later than To"});
+            }
+       
+var query = new VesselAnalyticsValues
+        {
+            Mmsi = mmsi.Value,
+            From = finalFrom ,
+            To = finalTo
+        };
+        var result = await _vesselAnalyticsService.GetVesselAnalytics(query);
+      
+
+        return Ok(result);
+    }
 }
