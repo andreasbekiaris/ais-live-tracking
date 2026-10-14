@@ -17,4 +17,6 @@ public interface IAisRepository
 
     Task<PagedResponse> GetPositionsByMmsiAsync(long mmsi,PositionQueryFilters filters);
 
+    Task<List<VesselDataAnalytics>> GetVesselAnalyticsAsync(VesselAnalyticsValues analyticsValues);
+
 }

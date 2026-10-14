@@ -539,4 +539,50 @@ WHERE mmsi = @Mmsi;";
         Count = positions.Count
     };
 }
+
+public async Task<List<VesselDataAnalytics>> GetVesselAnalyticsAsync(VesselAnalyticsValues analyticsValues)
+{
+    await using var conn = new SqlConnection(_connectionString);
+    await conn.OpenAsync();
+    var sql = @"
+SELECT
+    msg_timestamp_utc,
+    latitude, longitude, sog, nav_status   
+FROM positions
+WHERE mmsi = @mmsi
+  AND msg_timestamp_utc >= @from
+  AND msg_timestamp_utc <  @to
+ORDER BY msg_timestamp_utc
+";
+ List<VesselDataAnalytics> analyticsResults = new List<VesselDataAnalytics>();
+    await using var cmd = new SqlCommand(sql, conn);
+    cmd.Parameters.AddWithValue("@mmsi", analyticsValues.Mmsi);
+    cmd.Parameters.AddWithValue("@from", analyticsValues.From.UtcDateTime);
+    cmd.Parameters.AddWithValue("@to", analyticsValues.To.UtcDateTime);
+
+    await using var reader = await cmd.ExecuteReaderAsync();
+    while (await reader.ReadAsync())
+    {
+        var ts = reader.GetDateTime(reader.GetOrdinal("msg_timestamp_utc"));
+        var lat = reader.GetDouble(reader.GetOrdinal("latitude"));
+        var lon = reader.GetDouble(reader.GetOrdinal("longitude"));
+        decimal? sog = reader.IsDBNull(reader.GetOrdinal("sog")) ? null : reader.GetDecimal(reader.GetOrdinal("sog"));
+        byte? navStatus = reader.IsDBNull(reader.GetOrdinal("nav_status")) ? null : reader.GetByte(reader.GetOrdinal("nav_status"));
+
+       
+var analytics = new VesselDataAnalytics
+        {
+            Mmsi = analyticsValues.Mmsi,
+            Latitude = lat,
+            Longitude = lon,
+            Sog = sog,
+            MsgTimestampUtc = new DateTimeOffset(ts, TimeSpan.Zero),
+            NavStatus = navStatus
+        };
+
+        analyticsResults.Add(analytics);
+}
+return  analyticsResults;
+
+}
 }
