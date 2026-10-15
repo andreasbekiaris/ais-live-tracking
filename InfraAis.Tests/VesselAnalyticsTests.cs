@@ -9,7 +9,7 @@ namespace InfraAis.Tests;
 
 public class VesselAnalyticsServiceTests
 {
-    private const long Mmsi = 255805678;
+    private const long Mmsi = 290530111;
     private const double Lon = 23.0;
     private const double KmPerHundredthDegree = 1.11195;
 
@@ -17,8 +17,9 @@ public class VesselAnalyticsServiceTests
     private const double KnotsTolerance = 0.05;
     private const double HoursTolerance = 1e-6;
 
-    private static readonly DateTimeOffset T0 = new(2026, 1, 1, 10, 0, 0, TimeSpan.Zero);
+    private static readonly DateTimeOffset T0 = new(2006, 05, 29, 10, 0, 0, TimeSpan.Zero);
 
+   
     private static AnalyticsOptions DefaultOptions() => new()
     {
         GapThresholdHours = 1.0,
@@ -49,12 +50,17 @@ public class VesselAnalyticsServiceTests
         repo.Setup(r => r.GetVesselAnalyticsAsync(It.IsAny<VesselAnalyticsValues>()))
             .ReturnsAsync(track);
 
+     
         var service = new VesselAnalyticsService(
             repo.Object,
             Microsoft.Extensions.Options.Options.Create(options ?? DefaultOptions()));
 
         var result = await service.GetVesselAnalytics(
-            new VesselAnalyticsValues { Mmsi = Mmsi, From = from, To = to });
+            new VesselAnalyticsValues {
+                 Mmsi = Mmsi,
+                  From = from,
+                   To = to 
+                   });
 
         Assert.NotNull(result);
         return result!;
@@ -69,6 +75,8 @@ public class VesselAnalyticsServiceTests
 
     private static double NavHours(VesselAnalyticsResponse r, int status) =>
         r.Time.ByNavStatus.Single(x => x.NavStatus == status).Hours ?? 0;
+
+   
 
     [Fact]
     public async Task EmptyWindow_ReturnsZeroedResponse_NotNullOrError()
@@ -130,6 +138,7 @@ public class VesselAnalyticsServiceTests
     [Fact]
     public async Task TwoPoints_Moving_ComputesDistanceImpliedSpeedAndUnderway()
     {
+     
         var track = new List<VesselDataAnalytics>
         {
             P(0, 37.00, 12),
@@ -150,9 +159,12 @@ public class VesselAnalyticsServiceTests
         Close(100, r.Window.CoveragePercent, 1e-6);
     }
 
+   
+
     [Fact]
     public async Task Gap_IsExcludedFromDistanceAndTime_AndReported()
     {
+     
         var track = new List<VesselDataAnalytics>
         {
             P(0, 37.00, 12),
@@ -164,8 +176,8 @@ public class VesselAnalyticsServiceTests
         var r = await Run(track, T0, T0.AddMinutes(200));
 
         Close(4 * KmPerHundredthDegree, r.DistanceKm, KmTolerance);
+      
         Close(48 * KmPerHundredthDegree, r.DistanceExcludedKm, KmTolerance);
-
         Assert.Equal(1, r.Gaps.Count);
         Close(3.0, r.Gaps.TotalDarkHours, HoursTolerance);
         Assert.NotNull(r.Gaps.Longest);
@@ -173,11 +185,14 @@ public class VesselAnalyticsServiceTests
         Assert.Equal(T0.AddMinutes(10), r.Gaps.Longest.From);
         Assert.Equal(T0.AddMinutes(190), r.Gaps.Longest.To);
 
+       
         Close(20.0 / 60, r.Time.UnderwayHours, HoursTolerance);
         Close(20.0 / 60, NavHours(r, 0), HoursTolerance);
 
+        
         Close(10, r.Window.CoveragePercent, 1e-6);
 
+      
         Close(600, r.Reporting.MedianIntervalSeconds, HoursTolerance);
     }
 
@@ -188,9 +203,9 @@ public class VesselAnalyticsServiceTests
         {
             P(0, 37.00, 12),
             P(10, 37.02, 12),
-            P(130, 37.10, 12),
+            P(130, 37.10, 12), 
             P(140, 37.12, 12),
-            P(320, 37.30, 12),
+            P(320, 37.30, 12),   
             P(330, 37.32, 12)
         };
 
@@ -203,9 +218,11 @@ public class VesselAnalyticsServiceTests
         Assert.Equal(T0.AddMinutes(320), r.Gaps.Longest.To);
     }
 
+  
     [Fact]
     public async Task AllStopped_TwoHours_IsStoppedAndIdle()
     {
+      
         var track = Enumerable.Range(0, 13)
             .Select(i => P(i * 10, 37.00, 0.1, nav: 1))
             .ToList();
@@ -214,7 +231,7 @@ public class VesselAnalyticsServiceTests
 
         Close(2.0, r.Time.StoppedHours, HoursTolerance);
         Close(0, r.Time.UnderwayHours, HoursTolerance);
-        Close(2.0, r.IdleHours, HoursTolerance);
+        Close(2.0, r.IdleHours, HoursTolerance);      
         Close(2.0, NavHours(r, 1), HoursTolerance);
 
         Close(0, r.DistanceKm, KmTolerance);
@@ -237,7 +254,7 @@ public class VesselAnalyticsServiceTests
 
         Close(20.0 / 60, r.Time.StoppedHours, HoursTolerance);
         Close(10.0 / 60, r.Time.UnderwayHours, HoursTolerance);
-        Close(0, r.IdleHours, HoursTolerance);
+        Close(0, r.IdleHours, HoursTolerance);        
     }
 
     [Fact]
@@ -265,12 +282,14 @@ public class VesselAnalyticsServiceTests
     {
         var track = new List<VesselDataAnalytics>
         {
+           
             P(0, 37.00, 0.1),
             P(10, 37.00, 0.1),
             P(20, 37.00, 0.1),
             P(30, 37.00, 0.1),
             P(40, 37.00, 0.1),
             P(160, 37.00, 0.1),
+           
             P(170, 37.00, 0.1),
             P(180, 37.00, 0.1)
         };
@@ -279,13 +298,14 @@ public class VesselAnalyticsServiceTests
 
         Assert.Equal(1, r.Gaps.Count);
         Close(2.0, r.Gaps.TotalDarkHours, HoursTolerance);
-        Close(1.0, r.Time.StoppedHours, HoursTolerance);
-        Close(40.0 / 60, r.IdleHours, HoursTolerance);
+        Close(1.0, r.Time.StoppedHours, HoursTolerance);     
+        Close(40.0 / 60, r.IdleHours, HoursTolerance);        
     }
 
     [Fact]
     public async Task NullSog_InTheMiddleOfAStop_DoesNotBreakTheIdleRun()
     {
+        
         var track = new List<VesselDataAnalytics>
         {
             P(0, 37.00, 0.1),
@@ -300,9 +320,10 @@ public class VesselAnalyticsServiceTests
 
         Close(40.0 / 60, r.Time.StoppedHours, HoursTolerance);
         Close(40.0 / 60, r.IdleHours, HoursTolerance);
-        Close(0, r.Time.UnderwayHours, HoursTolerance);
+        Close(0, r.Time.UnderwayHours, HoursTolerance);     
     }
 
+ 
     [Fact]
     public async Task AvgSog_IgnoresNullSpeeds()
     {
@@ -316,7 +337,7 @@ public class VesselAnalyticsServiceTests
 
         var r = await Run(track, T0, T0.AddMinutes(30));
 
-        Close(12, r.Speed.AvgSogKnots, KnotsTolerance);
+        Close(12, r.Speed.AvgSogKnots, KnotsTolerance);      
         Close(12, r.Speed.MaxSogKnots, KnotsTolerance);
     }
 
@@ -338,6 +359,7 @@ public class VesselAnalyticsServiceTests
     [Fact]
     public async Task DuplicateTimestamps_AreSkipped_NoInfinityOrNaN()
     {
+       
         var track = new List<VesselDataAnalytics>
         {
             P(0, 37.00, 12),
@@ -350,10 +372,13 @@ public class VesselAnalyticsServiceTests
         Assert.False(double.IsInfinity(r.Speed.MaxImpliedKnots ?? 0));
         Assert.False(double.IsNaN(r.Speed.MaxImpliedKnots ?? 0));
 
+       
         Close(7.2, r.Speed.MaxImpliedKnots, KnotsTolerance);
         Close(600, r.Reporting.MedianIntervalSeconds, HoursTolerance);
         Assert.Equal(3, r.Reporting.Messages);
     }
+
+
 
     [Fact]
     public async Task ByNavStatus_HasOneEntryPerStatus_WithSummedHours()
@@ -378,6 +403,7 @@ public class VesselAnalyticsServiceTests
     [Fact]
     public async Task Coverage_CountsSilenceBeforeFirstAndAfterLastMessage()
     {
+     
         var track = new List<VesselDataAnalytics>
         {
             P(60, 37.00, 12),
@@ -395,6 +421,7 @@ public class VesselAnalyticsServiceTests
     [Fact]
     public async Task MedianInterval_EvenNumberOfIntervals_IsAverageOfTheMiddleTwo()
     {
+        
         var track = new List<VesselDataAnalytics>
         {
             At(T0, 37.00, 12),
@@ -409,9 +436,12 @@ public class VesselAnalyticsServiceTests
         Close(25, r.Reporting.MedianIntervalSeconds, HoursTolerance);
     }
 
+   
+
     [Fact]
     public async Task Thresholds_ComeFromOptions_NotHardcoded()
     {
+       
         var track = new List<VesselDataAnalytics>
         {
             P(0, 37.00, 1.0),
