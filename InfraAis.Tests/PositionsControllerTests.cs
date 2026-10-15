@@ -22,7 +22,8 @@ public class PositionsControllerTests
         var ctrl = new PositionsController(repo.Object,
             new Mock<ILogger<PositionsController>>().Object,
             resolver.Object,
-            new PositionQueryValidator());
+            new PositionQueryValidator(),
+            new Mock<IVesselAnalyticsService>().Object);
         return (ctrl, resolver, repo);
     }
 
