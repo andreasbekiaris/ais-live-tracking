@@ -58,6 +58,6 @@ public class ReportingAnalytics
 {
     public int Messages { get; set; }
     public double MedianIntervalSeconds { get; set; }
-    public DateTimeOffset? First { get; set; }     // null = 0 μηνύματα
+    public DateTimeOffset? First { get; set; }
     public DateTimeOffset? Last { get; set; }
 }

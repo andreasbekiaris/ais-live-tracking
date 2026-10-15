@@ -22,8 +22,6 @@ private readonly IOptions<AnalyticsOptions> _analyticsOptions;
         List<VesselDataAnalytics> PositionData =
             await _repo.GetVesselAnalyticsAsync(analyticsValues);
 
-        // Δεν επιστρέφουμε null όταν δεν υπάρχουν θέσεις.
-        // Το αποτέλεσμα πρέπει να είναι κανονικό response.
         PositionData = PositionData
             .OrderBy(p => p.MsgTimestampUtc)
             .ToList();
@@ -50,10 +48,6 @@ private readonly IOptions<AnalyticsOptions> _analyticsOptions;
        
         const double KmPerNauticalMile = 1.852;
 
-        // ============================
-        // MAIN LOOP
-        // ============================
-
         for (int j = 0; j < i - 1; j++)
         {
             var current = PositionData[j];
@@ -69,20 +63,14 @@ private readonly IOptions<AnalyticsOptions> _analyticsOptions;
                 continue;
             }
 
-            // REPORTING INTERVAL
             interval.Add(traveltime.TotalSeconds);
 
-            // DISTANCE
             double d = DistanceCalculator.CalculateDistance(
                 current.Latitude,
                 current.Longitude,
                 next.Latitude,
                 next.Longitude
             );
-
-            // ============================
-            // GAP DETECTION
-            // ============================
 
             if (hours > _analyticsOptions.Value.GapThresholdHours)
             {
@@ -112,15 +100,7 @@ private readonly IOptions<AnalyticsOptions> _analyticsOptions;
                 continue;
             }
 
-            // ============================
-            // DISTANCE
-            // ============================
-
             totalDistance += d;
-
-            // ============================
-            // MAX IMPLIED SPEED
-            // ============================
 
             double impliedKnots =
                 d / hours / KmPerNauticalMile;
@@ -131,24 +111,10 @@ private readonly IOptions<AnalyticsOptions> _analyticsOptions;
                 MaxImpliedSpeed = impliedKnots;
             }
 
-            // ============================
-            // STOPPED / UNDERWAY / IDLE
-            // ============================
-
             double? sog = (double?)next.Sog;
 
             if (sog == null)
             {
-                // UNKNOWN SOG:
-                // Δεν γνωρίζουμε αν το πλοίο κινείται.
-                // Δεν προσθέτουμε χρόνο σε stopped/underway.
-                // Δεν μηδενίζουμε το currentStopHours.
-                //
-                // Ο άγνωστος χρόνος δεν ταξινομείται
-                // και δεν προστίθεται στη διάρκεια στάσης.
-                // Επομένως stopped + underway + dark
-                // μπορεί να μην ισούται με τη συνολική
-                // παρατηρούμενη χρονική διάρκεια.
             }
             else if (sog.Value < _analyticsOptions.Value.StoppedSpeedThresholdKnots)
             {
@@ -167,10 +133,6 @@ private readonly IOptions<AnalyticsOptions> _analyticsOptions;
                 currentStopHours = 0;
             }
 
-            // ============================
-            // NAV STATUS
-            // ============================
-
             if (next.NavStatus is int navStatus)
             {
                 if (!hoursByStatus.ContainsKey(navStatus))
@@ -182,18 +144,10 @@ private readonly IOptions<AnalyticsOptions> _analyticsOptions;
             }
         }
 
-        // ============================
-        // FINAL IDLE CHECK
-        // ============================
-
         if (currentStopHours > _analyticsOptions.Value.IdleThresholdHours)
         {
             IdleHours += currentStopHours;
         }
-
-        // ============================
-        // NAV STATUS LIST
-        // ============================
 
         List<NavStatusTime> NavStatusTimes =
             hoursByStatus.Select(x => new NavStatusTime
@@ -201,10 +155,6 @@ private readonly IOptions<AnalyticsOptions> _analyticsOptions;
                 NavStatus = x.Key,
                 Hours = x.Value
             }).ToList();
-
-        // ============================
-        // MEDIAN REPORTING INTERVAL
-        // ============================
 
         interval.Sort();
 
@@ -223,10 +173,6 @@ private readonly IOptions<AnalyticsOptions> _analyticsOptions;
                 medianInterval = interval[g / 2];
             }
         }
-
-        // ============================
-        // SOG STATISTICS
-        // ============================
 
         double SogSum = 0;
         double SogMax = 0;
@@ -271,10 +217,6 @@ TimeSpan uncovered =  PositionData.First().MsgTimestampUtc - analyticsValues.Fro
         
         }
         
-        // ============================
-        // RESPONSE
-        // ============================
-
         return new VesselAnalyticsResponse
         {
             Mmsi = analyticsValues.Mmsi,

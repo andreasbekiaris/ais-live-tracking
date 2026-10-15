@@ -134,12 +134,10 @@ public class AisIngestionService : BackgroundService
            
 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
 {
-    // Shutdown: δεν είναι σφάλμα μηνύματος, άσ' το να ανέβει
     throw;
 }
 catch (Exception ex)
 {
-    // Οτιδήποτε άλλο: κακό μήνυμα, όχι κακή σύνδεση
     Interlocked.Increment(ref _rejected);
     _logger.LogError(ex, "Message handling failed, skipped.");
 
