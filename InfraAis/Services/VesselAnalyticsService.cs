@@ -27,7 +27,7 @@ public class VesselAnalyticsService : IVesselAnalyticsService
             .ToList();
 
         int i = PositionData.Count;
-
+        int impliedRef = 0;
         double totalDistance = 0;
         double distanceExcluded = 0;
         double MaxImpliedSpeed = 0;
@@ -39,7 +39,7 @@ public class VesselAnalyticsService : IVesselAnalyticsService
 
         int gapcount = 0;
         double totalDarkHours = 0;
-
+        double minImpliedSeconds = _analyticsOptions.Value.MinImpliedIntervalSeconds;
         Dictionary<int, double> hoursByStatus = new();
         List<double> interval = new();
 
@@ -96,19 +96,34 @@ public class VesselAnalyticsService : IVesselAnalyticsService
                 }
 
                 currentStopHours = 0;
-
+                impliedRef = j + 1;
                 continue;
             }
 
             totalDistance += d;
 
-            double impliedKnots =
-                d / hours / KmPerNauticalMile;
 
-            if (
-                impliedKnots > MaxImpliedSpeed)
+
+            while (impliedRef + 1 <= j && (next.MsgTimestampUtc - PositionData[impliedRef + 1].MsgTimestampUtc).TotalSeconds >= minImpliedSeconds)
             {
-                MaxImpliedSpeed = impliedKnots;
+                impliedRef++;
+            }
+
+            var refPoint = PositionData[impliedRef];
+            double spanHours = (next.MsgTimestampUtc - refPoint.MsgTimestampUtc).TotalHours;
+
+            if (spanHours > 0 && spanHours >= minImpliedSeconds / 3600)
+            {
+                double spanKm = DistanceCalculator.CalculateDistance(
+                    refPoint.Latitude, refPoint.Longitude,
+                    next.Latitude, next.Longitude);
+
+                double impliedKnots = spanKm / spanHours / KmPerNauticalMile;
+
+                if (impliedKnots > MaxImpliedSpeed)
+                {
+                    MaxImpliedSpeed = impliedKnots;
+                }
             }
 
             double? sog = (double?)next.Sog;
