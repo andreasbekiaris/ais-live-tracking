@@ -24,7 +24,8 @@ public class VesselAnalyticsServiceTests
     {
         GapThresholdHours = 1.0,
         IdleThresholdHours = 0.5,
-        StoppedSpeedThresholdKnots = 0.5
+        StoppedSpeedThresholdKnots = 0.5,
+        MinImpliedIntervalSeconds = 30
     };
 
     private static VesselDataAnalytics P(double minutes, double lat, double? sog, int? nav = 0) =>
@@ -378,8 +379,62 @@ public class VesselAnalyticsServiceTests
         Assert.Equal(3, r.Reporting.Messages);
     }
 
-
-
+    [Fact]
+    public async Task ImpliedSpeed_DenseTrack_IsStillMeasured()
+    {
+      
+        const double degPer10s = 0.06173 / 111.195;
+        var track = Enumerable.Range(0, 31)
+            .Select(i => At(T0.AddSeconds(i * 10), 37.0 + i * degPer10s, 12))
+            .ToList();
+ 
+        var r = await Run(track, T0, T0.AddMinutes(5));
+ 
+        Close(12.0, r.Speed.MaxImpliedKnots, 0.1);
+    }
+ 
+    [Fact]
+    public async Task ImpliedSpeed_SingleBadPosition_IsCaughtAsDataQualityFlag()
+    {
+       
+        const double degPer10s = 0.06173 / 111.195;
+        var track = Enumerable.Range(0, 31)
+            .Select(i => At(T0.AddSeconds(i * 10), 37.0 + i * degPer10s, 12))
+            .ToList();
+        track[15].Longitude = Lon + 0.0113;  
+ 
+        var r = await Run(track, T0, T0.AddMinutes(5));
+ 
+        Assert.True(r.Speed.MaxImpliedKnots > 50,
+            $"Expected an impossible implied speed for the glitch, got {r.Speed.MaxImpliedKnots}.");
+    }
+ 
+    [Fact]
+    public async Task ImpliedSpeed_GpsJitterOnMooredVessel_IsNotReportedAsSpeed()
+    {
+        
+        var t = new DateTimeOffset(2026, 10, 1, 6, 31, 36, 435, TimeSpan.Zero);
+        var track = new List<VesselDataAnalytics>
+        {
+            new() { Mmsi = Mmsi, Latitude = 49.29845666666667, Longitude = -123.02939666666666,
+                    Sog = 0.0m, NavStatus = 15, MsgTimestampUtc = t },
+            new() { Mmsi = Mmsi, Latitude = 49.298453333333335, Longitude = -123.02938833333333,
+                    Sog = 0.0m, NavStatus = 0, MsgTimestampUtc = t.AddMilliseconds(181) }
+        };
+ 
+        var guarded = await Run(track, t, t.AddMinutes(1));
+ 
+        Close(0, guarded.Speed.MaxImpliedKnots, KnotsTolerance);
+       
+        Close(0.181 / 3600, guarded.Time.StoppedHours, 1e-9);
+ 
+        
+        var options = DefaultOptions();
+        options.MinImpliedIntervalSeconds = 0;
+        var unguarded = await Run(track, t, t.AddMinutes(1), options);
+ 
+        Close(7.6, unguarded.Speed.MaxImpliedKnots, 0.1);
+}
     [Fact]
     public async Task ByNavStatus_HasOneEntryPerStatus_WithSummedHours()
     {
@@ -438,30 +493,50 @@ public class VesselAnalyticsServiceTests
 
    
 
+
+
     [Fact]
-    public async Task Thresholds_ComeFromOptions_NotHardcoded()
+    public async Task GapThreshold_ComesFromOptions()
     {
        
-        var track = new List<VesselDataAnalytics>
-        {
-            P(0, 37.00, 1.0),
-            P(180, 37.00, 1.0)
-        };
+        var track = new List<VesselDataAnalytics> { P(0, 37.00, 12), P(90, 37.10, 12) };
 
-        var options = new AnalyticsOptions
-        {
-            GapThresholdHours = 4.0,
-            IdleThresholdHours = 0.5,
-            StoppedSpeedThresholdKnots = 2.0
-        };
+        var withDefault = await Run(track, T0, T0.AddMinutes(90));         
+        var options = DefaultOptions();
+        options.GapThresholdHours = 2.0;
+        var withTwoHours = await Run(track, T0, T0.AddMinutes(90), options);
 
-        var r = await Run(track, T0, T0.AddHours(3), options);
-
-        Assert.Equal(0, r.Gaps.Count);
-        Close(3.0, r.Time.StoppedHours, HoursTolerance);
-        Close(3.0, r.IdleHours, HoursTolerance);
+        Assert.Equal(1, withDefault.Gaps.Count);   
+        Assert.Equal(0, withTwoHours.Gaps.Count);   
     }
+
+    [Fact]
+    public async Task StoppedSpeedThreshold_ComesFromOptions()
+    {
+        // 10 minutes at 1 knot.
+        var track = new List<VesselDataAnalytics> { P(0, 37.00, 1.0), P(10, 37.005, 1.0) };
+
+        var withDefault = await Run(track, T0, T0.AddMinutes(10));          
+        var options = DefaultOptions();
+        options.StoppedSpeedThresholdKnots = 2.0;
+        var withTwoKnots = await Run(track, T0, T0.AddMinutes(10), options);
+
+        Close(10.0 / 60, withDefault.Time.UnderwayHours, HoursTolerance);  
+        Close(10.0 / 60, withTwoKnots.Time.StoppedHours, HoursTolerance); 
+    }
+
+    [Fact]
+    public async Task IdleThreshold_ComesFromOptions()
+    {
+        
+        var track = Enumerable.Range(0, 5).Select(i => P(i * 10, 37.00, 0.1)).ToList();
+
+        var withDefault = await Run(track, T0, T0.AddMinutes(40));       
+        var options = DefaultOptions();
+        options.IdleThresholdHours = 1.0;
+        var withOneHour = await Run(track, T0, T0.AddMinutes(40), options);
+
+        Close(40.0 / 60, withDefault.IdleHours, HoursTolerance);  
+        Close(0, withOneHour.IdleHours, HoursTolerance);         
 }
-
-
-
+}
