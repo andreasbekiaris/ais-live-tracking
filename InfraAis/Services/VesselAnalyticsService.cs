@@ -9,8 +9,8 @@ namespace InfraAis.Services;
 public class VesselAnalyticsService : IVesselAnalyticsService
 {
     private readonly IAisRepository _repo;
-private readonly IOptions<AnalyticsOptions> _analyticsOptions;
-    public VesselAnalyticsService(IAisRepository repo,  IOptions<AnalyticsOptions> analyticsOptions)
+    private readonly IOptions<AnalyticsOptions> _analyticsOptions;
+    public VesselAnalyticsService(IAisRepository repo, IOptions<AnalyticsOptions> analyticsOptions)
     {
         _repo = repo;
         _analyticsOptions = analyticsOptions;
@@ -45,7 +45,7 @@ private readonly IOptions<AnalyticsOptions> _analyticsOptions;
 
         GapInfo? longestgap = null;
 
-       
+
         const double KmPerNauticalMile = 1.852;
 
         for (int j = 0; j < i - 1; j++)
@@ -201,22 +201,22 @@ private readonly IOptions<AnalyticsOptions> _analyticsOptions;
             AvgSog = SogSum / n;
         }
 
-       
 
-    
-      
-var covaragePercent = 0.0;
 
- if(PositionData.Count >= 2)
+
+
+        var covaragePercent = 0.0;
+
+        if (PositionData.Count >= 2)
         {
             TimeSpan timewindow = analyticsValues.To - analyticsValues.From;
-TimeSpan uncovered =  PositionData.First().MsgTimestampUtc - analyticsValues.From   ;
- uncovered += analyticsValues.To - PositionData.Last().MsgTimestampUtc;
-          var a =  (uncovered.TotalHours + totalDarkHours) / timewindow.TotalHours* 100;
- covaragePercent =  100 -a;
-        
+            TimeSpan uncovered = PositionData.First().MsgTimestampUtc - analyticsValues.From;
+            uncovered += analyticsValues.To - PositionData.Last().MsgTimestampUtc;
+            var a = (uncovered.TotalHours + totalDarkHours) / timewindow.TotalHours * 100;
+            covaragePercent = 100 - a;
+
         }
-        
+
         return new VesselAnalyticsResponse
         {
             Mmsi = analyticsValues.Mmsi,

@@ -73,7 +73,7 @@ public class AisIngestionService : BackgroundService
     {
         using var ws = new ClientWebSocket();
 
-      
+
 
         _logger.LogInformation("Connecting to AIS feed: {Url}", _options.Url);
         await ws.ConnectAsync(new Uri(_options.Url), stoppingToken);
@@ -131,20 +131,20 @@ public class AisIngestionService : BackgroundService
             {
                 _logger.LogWarning("Bad message skipped: {Error}", ex.Message);
             }
-           
-catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-{
-    throw;
-}
-catch (Exception ex)
-{
-    Interlocked.Increment(ref _rejected);
-    _logger.LogError(ex, "Message handling failed, skipped.");
 
-    using var scope = _scopeFactory.CreateScope();
-    var repo = scope.ServiceProvider.GetRequiredService<IAisRepository>();
-    await repo.InsertDeadLetterAsync(message, $"handler error: {ex.GetType().Name}: {ex.Message}");
-}
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                Interlocked.Increment(ref _rejected);
+                _logger.LogError(ex, "Message handling failed, skipped.");
+
+                using var scope = _scopeFactory.CreateScope();
+                var repo = scope.ServiceProvider.GetRequiredService<IAisRepository>();
+                await repo.InsertDeadLetterAsync(message, $"handler error: {ex.GetType().Name}: {ex.Message}");
+            }
         }
     }
     private async Task HandlePositionReport(AisMessage msg, string rawPayload)
@@ -158,7 +158,7 @@ catch (Exception ex)
         if (!pr.Valid)
         {
             await repo.InsertDeadLetterAsync(rawPayload, "feed flagged invalid");
-           Interlocked.Increment(ref _rejected);
+            Interlocked.Increment(ref _rejected);
             _logger.LogWarning("REJECT: feed flagged invalid. MMSI={Mmsi}", pr.UserID);
             return;
         }
@@ -174,7 +174,7 @@ catch (Exception ex)
         if (!AisValidator.IsValidPosition(pr.Latitude, pr.Longitude))
         {
             await repo.InsertDeadLetterAsync(rawPayload, $"bad position {pr.Latitude}/{pr.Longitude}");
-           Interlocked.Increment(ref _rejected);
+            Interlocked.Increment(ref _rejected);
             _logger.LogWarning("REJECT: bad position Lat={Lat} Lon={Lon}", pr.Latitude, pr.Longitude);
             return;
         }
@@ -182,7 +182,7 @@ catch (Exception ex)
         if (!AisValidator.TryParseTimestamp(msg.MetaData.TimeUtc, out var ts))
         {
             await repo.InsertDeadLetterAsync(rawPayload, $"unparseable timestamp '{msg.MetaData.TimeUtc}'");
-           Interlocked.Increment(ref _rejected);
+            Interlocked.Increment(ref _rejected);
             _logger.LogWarning("REJECT: unparseable timestamp '{Ts}'", msg.MetaData.TimeUtc);
             return;
         }
@@ -221,7 +221,7 @@ catch (Exception ex)
         });
         Interlocked.Increment(ref _stored);
         _logger.LogInformation("STORED: MMSI={Mmsi} Lat={Lat} Lon={Lon}", pr.UserID, pr.Latitude, pr.Longitude);
-        
+
     }
 
     private async Task HandleStaticData(AisMessage msg, string rawPayload)
@@ -230,41 +230,42 @@ catch (Exception ex)
         if (sd is null) return;
 
         int? imo = AisValidator.IsValidImo(sd.ImoNumber) ? sd.ImoNumber : null;
-        
+
         using var scope = _scopeFactory.CreateScope();
         var repo = scope.ServiceProvider.GetRequiredService<IAisRepository>();
-       if(!AisValidator.IsValidMmsi(sd.UserID))
+        if (!AisValidator.IsValidMmsi(sd.UserID))
         {
             await repo.InsertDeadLetterAsync(rawPayload, $"bad MMSI {sd.UserID}");
-             Interlocked.Increment(ref _rejected);
-             _logger.LogWarning("REJECT: bad MMSI={Mmsi}", sd.UserID);
+            Interlocked.Increment(ref _rejected);
+            _logger.LogWarning("REJECT: bad MMSI={Mmsi}", sd.UserID);
             return;
         }
-        if(imo is not null)
+        if (imo is not null)
         {
-        var existingMmsi =    await repo.GetMmsiByImoAsync((int)imo) ; 
-if (existingMmsi is not null && existingMmsi != sd.UserID)
-{
-    _logger.LogWarning(
-        "IMO CONFLICT: IMO={Imo} already belongs to MMSI={ExistingMmsi}. Storing NULL for MMSI={NewMmsi}",
-        imo, existingMmsi, sd.UserID);
+            var existingMmsi = await repo.GetMmsiByImoAsync((int)imo);
+            if (existingMmsi is not null && existingMmsi != sd.UserID)
+            {
+                _logger.LogWarning(
+                    "IMO CONFLICT: IMO={Imo} already belongs to MMSI={ExistingMmsi}. Storing NULL for MMSI={NewMmsi}",
+                    imo, existingMmsi, sd.UserID);
 
-    imo = null;
-}}
-       if (!AisValidator.TryParseTimestamp(msg.MetaData.TimeUtc, out var ts))
-{
-    await repo.InsertDeadLetterAsync(rawPayload, $"unparseable timestamp '{msg.MetaData.TimeUtc}'");
-    Interlocked.Increment(ref _rejected);
-    _logger.LogWarning("REJECT: unparseable timestamp '{Ts}'", msg.MetaData.TimeUtc);
-    return;
-}
-if (!AisValidator.IsNotFutureSkewed(ts, _ingestion.FutureSkewMinutes))
-{
-    await repo.InsertDeadLetterAsync(rawPayload, $"future timestamp {ts:o}");
-    Interlocked.Increment(ref _rejected);
-    _logger.LogWarning("REJECT: future timestamp {Ts}", ts);
-    return;
-}
+                imo = null;
+            }
+        }
+        if (!AisValidator.TryParseTimestamp(msg.MetaData.TimeUtc, out var ts))
+        {
+            await repo.InsertDeadLetterAsync(rawPayload, $"unparseable timestamp '{msg.MetaData.TimeUtc}'");
+            Interlocked.Increment(ref _rejected);
+            _logger.LogWarning("REJECT: unparseable timestamp '{Ts}'", msg.MetaData.TimeUtc);
+            return;
+        }
+        if (!AisValidator.IsNotFutureSkewed(ts, _ingestion.FutureSkewMinutes))
+        {
+            await repo.InsertDeadLetterAsync(rawPayload, $"future timestamp {ts:o}");
+            Interlocked.Increment(ref _rejected);
+            _logger.LogWarning("REJECT: future timestamp {Ts}", ts);
+            return;
+        }
         await repo.UpsertVesselAsync(new VesselRecord
         {
             Mmsi = sd.UserID,

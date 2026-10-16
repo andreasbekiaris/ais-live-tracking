@@ -9,7 +9,7 @@ public static class CursorCodec
 
     public static string Encode(PositionCursor cursor)
     {
-      
+
         DateTime timestamp = cursor.Timestamp.Kind == DateTimeKind.Unspecified
             ? DateTime.SpecifyKind(cursor.Timestamp, DateTimeKind.Utc)
             : cursor.Timestamp.ToUniversalTime();

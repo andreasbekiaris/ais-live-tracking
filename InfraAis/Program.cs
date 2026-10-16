@@ -11,8 +11,8 @@ builder.Services.AddOptions<AisStreamOptions>().Bind(builder.Configuration.GetSe
 builder.Services
     .AddOptions<IngestionOptions>()
     .Bind(builder.Configuration.GetSection(IngestionOptions.SectionName));
-    builder.Services.AddOptions<AnalyticsOptions>()
-    .Bind(builder.Configuration.GetSection(AnalyticsOptions.SectionName));
+builder.Services.AddOptions<AnalyticsOptions>()
+.Bind(builder.Configuration.GetSection(AnalyticsOptions.SectionName));
 builder.Services.AddHostedService<AisIngestionService>();
 builder.Services
     .AddOptions<AisDbOptions>()

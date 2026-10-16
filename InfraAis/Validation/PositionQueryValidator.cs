@@ -88,13 +88,13 @@ public class PositionQueryValidator : IPositionQueryValidator
             };
         }
         if (isFleet && query.From.HasValue != query.To.HasValue)
-{
-    return new ValidationResult<PositionQueryFilters>
-    {
-        IsValid = false,
-        Error = "Both 'from' and 'to' must be provided together."
-    };
-}
+        {
+            return new ValidationResult<PositionQueryFilters>
+            {
+                IsValid = false,
+                Error = "Both 'from' and 'to' must be provided together."
+            };
+        }
         bool isBoundingBoxProvided = query.MinLat.HasValue && query.MaxLat.HasValue && query.MinLon.HasValue && query.MaxLon.HasValue;
         if (isFleet && !isBoundingBoxProvided && !query.From.HasValue && !query.To.HasValue)
         {
@@ -166,46 +166,46 @@ public class PositionQueryValidator : IPositionQueryValidator
             }
         }
         if (query.NavStatus is not null)
-{
-    var navStatusParts = query.NavStatus
-        .Split(',')
-        .Select(n => n.Trim())
-        .ToList();
-
-    if (navStatusParts.Any(n => !int.TryParse(n, out _)))
-    {
-        return new ValidationResult<PositionQueryFilters>
         {
-            IsValid = false,
-            Error = "Navigation status values must be integers."
-        };
-    }
+            var navStatusParts = query.NavStatus
+                .Split(',')
+                .Select(n => n.Trim())
+                .ToList();
 
-    var navStatusList = navStatusParts
-        .Select(int.Parse)
-        .ToList();
+            if (navStatusParts.Any(n => !int.TryParse(n, out _)))
+            {
+                return new ValidationResult<PositionQueryFilters>
+                {
+                    IsValid = false,
+                    Error = "Navigation status values must be integers."
+                };
+            }
 
-    if (navStatusList.Any(n => AisValidator.NormalizeNavStatus(n) is null))
-    {
-        return new ValidationResult<PositionQueryFilters>
+            var navStatusList = navStatusParts
+                .Select(int.Parse)
+                .ToList();
+
+            if (navStatusList.Any(n => AisValidator.NormalizeNavStatus(n) is null))
+            {
+                return new ValidationResult<PositionQueryFilters>
+                {
+                    IsValid = false,
+                    Error = "One or more navigation status values are outside the valid AIS range."
+                };
+            }
+        }
+        var normalizedSort = query.Sort?.Trim().ToLowerInvariant();
+
+        if (normalizedSort is not null &&
+            normalizedSort != "asc" &&
+            normalizedSort != "desc")
         {
-            IsValid = false,
-            Error = "One or more navigation status values are outside the valid AIS range."
-        };
-    }
-}
-       var normalizedSort = query.Sort?.Trim().ToLowerInvariant();
-
-if (normalizedSort is not null &&
-    normalizedSort != "asc" &&
-    normalizedSort != "desc")
-{
-    return new ValidationResult<PositionQueryFilters>
-    {
-        IsValid = false,
-        Error = "'sort' must be either 'asc' or 'desc'."
-    };
-}
+            return new ValidationResult<PositionQueryFilters>
+            {
+                IsValid = false,
+                Error = "'sort' must be either 'asc' or 'desc'."
+            };
+        }
         if (query.Cursor is not null)
         {
             if (CursorCodec.Decode(query.Cursor) is null)
@@ -238,7 +238,7 @@ if (normalizedSort is not null &&
                 To = query.To,
                 Mmsis = query.Mmsi?.Split(',').Select(m => m.Trim()).Where(m => long.TryParse(m, out _)).Select(long.Parse).ToList() ?? new List<long>(),
                 NavStatuses = query.NavStatus?.Split(',').Select(n => n.Trim()).Where(n => int.TryParse(n, out _)).Select(int.Parse).ToList() ?? new List<int>(),
-               Sort = normalizedSort == "asc"
+                Sort = normalizedSort == "asc"
     ? SortDirection.Asc
     : SortDirection.Desc,
                 Cursor = query.Cursor

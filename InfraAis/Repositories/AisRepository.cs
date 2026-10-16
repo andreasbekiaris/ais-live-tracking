@@ -357,14 +357,14 @@ WHERE mmsi = @Mmsi;";
         };
     }
 
-  public async Task<PagedResponse> GetPositionsByMmsiAsync(
-    long mmsi,
-    PositionQueryFilters filters)
-{
-    await using var conn = new SqlConnection(_connectionString);
-    await conn.OpenAsync();
+    public async Task<PagedResponse> GetPositionsByMmsiAsync(
+      long mmsi,
+      PositionQueryFilters filters)
+    {
+        await using var conn = new SqlConnection(_connectionString);
+        await conn.OpenAsync();
 
-    var sql = @"
+        var sql = @"
         SELECT TOP (@Limit + 1)
             mmsi AS Mmsi,
             latitude AS Latitude,
@@ -381,88 +381,88 @@ WHERE mmsi = @Mmsi;";
         WHERE mmsi = @Mmsi
     ";
 
-    var parameters = new DynamicParameters();
+        var parameters = new DynamicParameters();
 
-    parameters.Add("Mmsi", mmsi);
-    parameters.Add("Limit", filters.Limit);
+        parameters.Add("Mmsi", mmsi);
+        parameters.Add("Limit", filters.Limit);
 
-    // FROM μόνο του επιτρέπεται
-    if (filters.From.HasValue)
-    {
-        sql += @"
+        // FROM μόνο του επιτρέπεται
+        if (filters.From.HasValue)
+        {
+            sql += @"
             AND msg_timestamp_utc >= @From
         ";
 
-        parameters.Add("From", filters.From.Value.UtcDateTime);
-    }
+            parameters.Add("From", filters.From.Value.UtcDateTime);
+        }
 
-    // TO μόνο του επιτρέπεται
-    if (filters.To.HasValue)
-    {
-        sql += @"
+        // TO μόνο του επιτρέπεται
+        if (filters.To.HasValue)
+        {
+            sql += @"
             AND msg_timestamp_utc < @To
         ";
 
-        parameters.Add("To", filters.To.Value.UtcDateTime);
-    }
+            parameters.Add("To", filters.To.Value.UtcDateTime);
+        }
 
-    // Bounding box
-    if (filters.BoundingBox is not null)
-    {
-        sql += @"
+        // Bounding box
+        if (filters.BoundingBox is not null)
+        {
+            sql += @"
             AND latitude >= @MinLat
             AND latitude <= @MaxLat
             AND longitude >= @MinLon
             AND longitude <= @MaxLon
         ";
 
-        parameters.Add("MinLat", filters.BoundingBox.MinLat);
-        parameters.Add("MaxLat", filters.BoundingBox.MaxLat);
-        parameters.Add("MinLon", filters.BoundingBox.MinLon);
-        parameters.Add("MaxLon", filters.BoundingBox.MaxLon);
-    }
+            parameters.Add("MinLat", filters.BoundingBox.MinLat);
+            parameters.Add("MaxLat", filters.BoundingBox.MaxLat);
+            parameters.Add("MinLon", filters.BoundingBox.MinLon);
+            parameters.Add("MaxLon", filters.BoundingBox.MaxLon);
+        }
 
-    // Nav status
-    if (filters.NavStatuses is not null &&
-        filters.NavStatuses.Count > 0)
-    {
-        sql += @"
+        // Nav status
+        if (filters.NavStatuses is not null &&
+            filters.NavStatuses.Count > 0)
+        {
+            sql += @"
             AND nav_status IN @NavStatuses
         ";
 
-        parameters.Add("NavStatuses", filters.NavStatuses);
-    }
+            parameters.Add("NavStatuses", filters.NavStatuses);
+        }
 
-    // Minimum SOG
-    if (filters.MinSog.HasValue)
-    {
-        sql += @"
+        // Minimum SOG
+        if (filters.MinSog.HasValue)
+        {
+            sql += @"
             AND sog >= @MinSog
         ";
 
-        parameters.Add("MinSog", filters.MinSog);
-    }
+            parameters.Add("MinSog", filters.MinSog);
+        }
 
-    // Maximum SOG
-    if (filters.MaxSog.HasValue)
-    {
-        sql += @"
+        // Maximum SOG
+        if (filters.MaxSog.HasValue)
+        {
+            sql += @"
             AND sog <= @MaxSog
         ";
 
-        parameters.Add("MaxSog", filters.MaxSog);
-    }
+            parameters.Add("MaxSog", filters.MaxSog);
+        }
 
-    // Cursor pagination
-    if (filters.Cursor is not null)
-    {
-        var cursor = CursorCodec.Decode(filters.Cursor);
-
-        if (cursor is not null)
+        // Cursor pagination
+        if (filters.Cursor is not null)
         {
-            if (filters.Sort == SortDirection.Desc)
+            var cursor = CursorCodec.Decode(filters.Cursor);
+
+            if (cursor is not null)
             {
-                sql += @"
+                if (filters.Sort == SortDirection.Desc)
+                {
+                    sql += @"
                     AND (
                         msg_timestamp_utc < @CursorTs
                         OR (
@@ -471,10 +471,10 @@ WHERE mmsi = @Mmsi;";
                         )
                     )
                 ";
-            }
-            else
-            {
-                sql += @"
+                }
+                else
+                {
+                    sql += @"
                     AND (
                         msg_timestamp_utc > @CursorTs
                         OR (
@@ -483,68 +483,68 @@ WHERE mmsi = @Mmsi;";
                         )
                     )
                 ";
+                }
+
+                parameters.Add("CursorTs", cursor.Timestamp);
+                parameters.Add("CursorId", cursor.Id);
             }
-
-            parameters.Add("CursorTs", cursor.Timestamp);
-            parameters.Add("CursorId", cursor.Id);
         }
-    }
 
-    var direction =
-        filters.Sort.ToString().ToUpperInvariant();
+        var direction =
+            filters.Sort.ToString().ToUpperInvariant();
 
-    sql += $@"
+        sql += $@"
         ORDER BY
             msg_timestamp_utc {direction},
             id {direction};
     ";
 
-    var positions =
-        (await conn.QueryAsync<PositionHistoryRecord>(
-            sql,
-            parameters))
-        .ToList();
+        var positions =
+            (await conn.QueryAsync<PositionHistoryRecord>(
+                sql,
+                parameters))
+            .ToList();
 
-    var hasMore =
-        positions.Count > filters.Limit;
+        var hasMore =
+            positions.Count > filters.Limit;
 
-    if (hasMore)
-    {
-        positions.RemoveAt(
-            positions.Count - 1);
+        if (hasMore)
+        {
+            positions.RemoveAt(
+                positions.Count - 1);
+        }
+
+        string? nextCursor = null;
+
+        if (hasMore && positions.Count > 0)
+        {
+            var lastPosition =
+                positions[^1];
+
+            nextCursor =
+                CursorCodec.Encode(
+                    new PositionCursor
+                    {
+                        Timestamp =
+                            lastPosition.MsgTimestampUtc,
+                        Id =
+                            lastPosition.Id
+                    });
+        }
+
+        return new PagedResponse
+        {
+            Items = positions,
+            NextCursor = nextCursor,
+            Count = positions.Count
+        };
     }
 
-    string? nextCursor = null;
-
-    if (hasMore && positions.Count > 0)
+    public async Task<List<VesselDataAnalytics>> GetVesselAnalyticsAsync(VesselAnalyticsValues analyticsValues)
     {
-        var lastPosition =
-            positions[^1];
-
-        nextCursor =
-            CursorCodec.Encode(
-                new PositionCursor
-                {
-                    Timestamp =
-                        lastPosition.MsgTimestampUtc,
-                    Id =
-                        lastPosition.Id
-                });
-    }
-
-    return new PagedResponse
-    {
-        Items = positions,
-        NextCursor = nextCursor,
-        Count = positions.Count
-    };
-}
-
-public async Task<List<VesselDataAnalytics>> GetVesselAnalyticsAsync(VesselAnalyticsValues analyticsValues)
-{
-    await using var conn = new SqlConnection(_connectionString);
-    await conn.OpenAsync();
-    var sql = @"
+        await using var conn = new SqlConnection(_connectionString);
+        await conn.OpenAsync();
+        var sql = @"
 SELECT
     msg_timestamp_utc,
     latitude, longitude, sog, nav_status   
@@ -554,35 +554,35 @@ WHERE mmsi = @mmsi
   AND msg_timestamp_utc <  @to
 ORDER BY msg_timestamp_utc
 ";
- List<VesselDataAnalytics> analyticsResults = new List<VesselDataAnalytics>();
-    await using var cmd = new SqlCommand(sql, conn);
-    cmd.Parameters.AddWithValue("@mmsi", analyticsValues.Mmsi);
-    cmd.Parameters.AddWithValue("@from", analyticsValues.From.UtcDateTime);
-    cmd.Parameters.AddWithValue("@to", analyticsValues.To.UtcDateTime);
+        List<VesselDataAnalytics> analyticsResults = new List<VesselDataAnalytics>();
+        await using var cmd = new SqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("@mmsi", analyticsValues.Mmsi);
+        cmd.Parameters.AddWithValue("@from", analyticsValues.From.UtcDateTime);
+        cmd.Parameters.AddWithValue("@to", analyticsValues.To.UtcDateTime);
 
-    await using var reader = await cmd.ExecuteReaderAsync();
-    while (await reader.ReadAsync())
-    {
-        var ts = reader.GetDateTime(reader.GetOrdinal("msg_timestamp_utc"));
-        var lat = reader.GetDouble(reader.GetOrdinal("latitude"));
-        var lon = reader.GetDouble(reader.GetOrdinal("longitude"));
-        decimal? sog = reader.IsDBNull(reader.GetOrdinal("sog")) ? null : reader.GetDecimal(reader.GetOrdinal("sog"));
-        byte? navStatus = reader.IsDBNull(reader.GetOrdinal("nav_status")) ? null : reader.GetByte(reader.GetOrdinal("nav_status"));
-
-       
-var analytics = new VesselDataAnalytics
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
         {
-            Mmsi = analyticsValues.Mmsi,
-            Latitude = lat,
-            Longitude = lon,
-            Sog = sog,
-            MsgTimestampUtc = new DateTimeOffset(ts, TimeSpan.Zero),
-            NavStatus = navStatus
-        };
+            var ts = reader.GetDateTime(reader.GetOrdinal("msg_timestamp_utc"));
+            var lat = reader.GetDouble(reader.GetOrdinal("latitude"));
+            var lon = reader.GetDouble(reader.GetOrdinal("longitude"));
+            decimal? sog = reader.IsDBNull(reader.GetOrdinal("sog")) ? null : reader.GetDecimal(reader.GetOrdinal("sog"));
+            byte? navStatus = reader.IsDBNull(reader.GetOrdinal("nav_status")) ? null : reader.GetByte(reader.GetOrdinal("nav_status"));
 
-        analyticsResults.Add(analytics);
-}
-return  analyticsResults;
 
-}
+            var analytics = new VesselDataAnalytics
+            {
+                Mmsi = analyticsValues.Mmsi,
+                Latitude = lat,
+                Longitude = lon,
+                Sog = sog,
+                MsgTimestampUtc = new DateTimeOffset(ts, TimeSpan.Zero),
+                NavStatus = navStatus
+            };
+
+            analyticsResults.Add(analytics);
+        }
+        return analyticsResults;
+
+    }
 }

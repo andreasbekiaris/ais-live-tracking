@@ -44,7 +44,7 @@ public class GapAnalytics
 {
     public int Count { get; set; }
     public double TotalDarkHours { get; set; }
-    public GapInfo? Longest { get; set; }         
+    public GapInfo? Longest { get; set; }
 }
 
 public class GapInfo
