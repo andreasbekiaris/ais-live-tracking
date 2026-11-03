@@ -7,6 +7,10 @@ using InfraAis.Models;
 using InfraAis.Repositories;
 using InfraAis.Services;
 using InfraAis.Validation;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Http;
+using InfraAis.Authentication;
+using InfraAis.Models.Auth;
 
 namespace InfraAis.Tests;
 
@@ -15,17 +19,37 @@ public class PositionsControllerTests
     private static readonly DateTimeOffset From = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
     private static readonly DateTimeOffset To = new(2026, 1, 2, 0, 0, 0, TimeSpan.Zero);
 
-    private static (PositionsController ctrl, Mock<IvesselIdentifierResolver> resolver, Mock<IAisRepository> repo) Build()
+   private static (PositionsController ctrl, Mock<IvesselIdentifierResolver> resolver, Mock<IAisRepository> repo) Build()
+{
+    var resolver = new Mock<IvesselIdentifierResolver>();
+    var repo = new Mock<IAisRepository>();
+
+    var ctrl = new PositionsController(
+        repo.Object,
+        new Mock<ILogger<PositionsController>>().Object,
+        resolver.Object,
+        new PositionQueryValidator(),
+        new Mock<IVesselAnalyticsService>().Object
+    );
+
+    var claims = new List<Claim>
     {
-        var resolver = new Mock<IvesselIdentifierResolver>();
-        var repo = new Mock<IAisRepository>();
-        var ctrl = new PositionsController(repo.Object,
-            new Mock<ILogger<PositionsController>>().Object,
-            resolver.Object,
-            new PositionQueryValidator(),
-            new Mock<IVesselAnalyticsService>().Object);
-        return (ctrl, resolver, repo);
-    }
+        new Claim(ClaimTypes.Role, Roles.Admin)
+    };
+
+    var identity = new ClaimsIdentity(claims, "Bearer");
+    var principal = new ClaimsPrincipal(identity);
+    var context = new DefaultHttpContext();
+
+    context.User = principal;
+
+    ctrl.ControllerContext = new ControllerContext
+    {
+        HttpContext = context
+    };
+
+    return (ctrl, resolver, repo);
+}
 
     private static Task<ActionResult<PagedResponse>> Fleet(PositionsController ctrl,
         DateTimeOffset? from = null, DateTimeOffset? to = null,

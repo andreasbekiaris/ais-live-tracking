@@ -1,0 +1,11 @@
+$kind: http-request
+name: http://localhost:5073/api/
+description: ""
+url: http://localhost:5073/api/
+method: GET
+headers:
+  - key: x-api-key
+    value: ""
+    disabled: true
+    description: ""
+order: 1000
