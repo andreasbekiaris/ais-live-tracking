@@ -53,8 +53,7 @@ public class VesselAnalyticsService : IVesselAnalyticsService
             var current = PositionData[j];
             var next = PositionData[j + 1];
 
-            TimeSpan traveltime =
-                next.MsgTimestampUtc - current.MsgTimestampUtc;
+            TimeSpan traveltime = next.MsgTimestampUtc - current.MsgTimestampUtc;
 
             double hours = traveltime.TotalHours;
 
@@ -65,12 +64,7 @@ public class VesselAnalyticsService : IVesselAnalyticsService
 
             interval.Add(traveltime.TotalSeconds);
 
-            double d = DistanceCalculator.CalculateDistance(
-                current.Latitude,
-                current.Longitude,
-                next.Latitude,
-                next.Longitude
-            );
+            double d = DistanceCalculator.CalculateDistance(current.Latitude, current.Longitude, next.Latitude,next.Longitude);
 
             if (hours > _analyticsOptions.Value.GapThresholdHours)
             {
@@ -79,8 +73,7 @@ public class VesselAnalyticsService : IVesselAnalyticsService
                 totalDarkHours += hours;
                 distanceExcluded += d;
 
-                if (longestgap == null ||
-                    hours > longestgap.Hours)
+                if (longestgap == null || hours > longestgap.Hours)
                 {
                     longestgap = new GapInfo
                     {
@@ -274,11 +267,9 @@ public class VesselAnalyticsService : IVesselAnalyticsService
                 Messages = PositionData.Count,
                 MedianIntervalSeconds = medianInterval,
 
-                First = PositionData
-                    .FirstOrDefault()?.MsgTimestampUtc,
+                First = PositionData.FirstOrDefault()?.MsgTimestampUtc,
 
-                Last = PositionData
-                    .LastOrDefault()?.MsgTimestampUtc
+                Last = PositionData .LastOrDefault()?.MsgTimestampUtc
             }
         };
     }
