@@ -9,8 +9,8 @@ public class PositionQueryFilters
     public SortDirection Sort { get; init; }
     public int Limit { get; init; }
 
-    public DateTimeOffset? From { get; init; }
-    public DateTimeOffset? To { get; init; }
+    public DateTimeOffset? From { get; set; }
+    public DateTimeOffset? To { get; set; }
     public decimal? MinSog { get; init; }
     public decimal? MaxSog { get; init; }
 
