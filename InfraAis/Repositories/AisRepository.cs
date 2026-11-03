@@ -227,16 +227,17 @@ WHERE mmsi = @Mmsi;";
         parameters.Add("Limit", filters.Limit);
 
 
-        if (filters.From.HasValue && filters.To.HasValue)
-        {
-            sql += @"
-            AND msg_timestamp_utc >= @From
-            AND msg_timestamp_utc < @To
-        ";
+       if (filters.From.HasValue)
+{
+    sql += " AND msg_timestamp_utc >= @From";
+    parameters.Add("From", filters.From.Value.UtcDateTime, DbType.DateTime2);
+}
 
-            parameters.Add("From", filters.From);
-            parameters.Add("To", filters.To);
-        }
+if (filters.To.HasValue)
+{
+    sql += " AND msg_timestamp_utc < @To";
+    parameters.Add("To", filters.To.Value.UtcDateTime, DbType.DateTime2);
+}
 
 
         if (filters.BoundingBox is not null)
@@ -393,7 +394,7 @@ WHERE mmsi = @Mmsi;";
             AND msg_timestamp_utc >= @From
         ";
 
-            parameters.Add("From", filters.From.Value.UtcDateTime);
+          parameters.Add("From", filters.From.Value.UtcDateTime, DbType.DateTime2);
         }
 
         // TO μόνο του επιτρέπεται
@@ -403,7 +404,7 @@ WHERE mmsi = @Mmsi;";
             AND msg_timestamp_utc < @To
         ";
 
-            parameters.Add("To", filters.To.Value.UtcDateTime);
+           parameters.Add("To", filters.To.Value.UtcDateTime, DbType.DateTime2);
         }
 
         // Bounding box
@@ -416,10 +417,10 @@ WHERE mmsi = @Mmsi;";
             AND longitude <= @MaxLon
         ";
 
-            parameters.Add("MinLat", filters.BoundingBox.MinLat);
-            parameters.Add("MaxLat", filters.BoundingBox.MaxLat);
-            parameters.Add("MinLon", filters.BoundingBox.MinLon);
-            parameters.Add("MaxLon", filters.BoundingBox.MaxLon);
+            parameters.Add("MinLat", filters.BoundingBox.MinLat, DbType.Double);
+            parameters.Add("MaxLat", filters.BoundingBox.MaxLat, DbType.Double);
+            parameters.Add("MinLon", filters.BoundingBox.MinLon, DbType.Double);
+            parameters.Add("MaxLon", filters.BoundingBox.MaxLon, DbType.Double);
         }
 
         // Nav status
@@ -556,10 +557,9 @@ ORDER BY msg_timestamp_utc
 ";
         List<VesselDataAnalytics> analyticsResults = new List<VesselDataAnalytics>();
         await using var cmd = new SqlCommand(sql, conn);
-        cmd.Parameters.AddWithValue("@mmsi", analyticsValues.Mmsi);
-        cmd.Parameters.AddWithValue("@from", analyticsValues.From.UtcDateTime);
-        cmd.Parameters.AddWithValue("@to", analyticsValues.To.UtcDateTime);
-
+        cmd.Parameters.Add("@mmsi", SqlDbType.BigInt).Value = analyticsValues.Mmsi;
+cmd.Parameters.Add("@from", SqlDbType.DateTime2).Value = analyticsValues.From.UtcDateTime;
+cmd.Parameters.Add("@to", SqlDbType.DateTime2).Value = analyticsValues.To.UtcDateTime;
         await using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
