@@ -36,7 +36,10 @@ public class MonthlyQuotaMiddleware
             return;
         }
 
-        string endpoint = context.Request.Path.Value ?? "/";
+        string endpoint = (context.GetEndpoint() as RouteEndpoint)?.RoutePattern.RawText ?? context.Request.Path.Value ?? "/";
+
+        if (endpoint.Length > 128)
+            endpoint = endpoint[..128];
 
         long? usageId = await repo.TryReserveAsync(keyId.Value, monthlyQuota, endpoint);
 
