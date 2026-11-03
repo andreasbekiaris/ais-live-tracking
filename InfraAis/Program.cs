@@ -211,9 +211,9 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.UseRouting();
 app.UseAuthentication();
+app.UseAuthorization();
 app.UseRateLimiter();
 app.UseMiddleware<MonthlyQuotaMiddleware>();
-app.UseAuthorization();
 
 app.MapControllers();
 
