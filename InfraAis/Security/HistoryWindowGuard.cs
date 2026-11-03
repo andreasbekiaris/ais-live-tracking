@@ -24,7 +24,10 @@ public static class HistoryWindowGuard
     if (!user.TryGetMaxHistoryDays(out int? maxDays))
         return false;
 
-    if (!maxDays.HasValue || maxDays.Value <= 0)
+    if (!maxDays.HasValue)
+        return true;
+
+    if (maxDays.Value <= 0)
         return false;
 
     DateTimeOffset earliest = now.AddDays(-maxDays.Value);
