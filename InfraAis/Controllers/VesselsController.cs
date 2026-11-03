@@ -1,13 +1,18 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using InfraAis.Utils;
+using Microsoft.AspNetCore.Authorization;
 using InfraAis.Models;
 using InfraAis.Services;
+using InfraAis.Authentication;
+using Microsoft.AspNetCore.RateLimiting;
 using InfraAis.Repositories;
 namespace InfraAis.Controllers;
 
 [ApiController]
 [Route("api/vessels")]
+[Authorize(Policy = AuthPolicies.CanRead)]
+[EnableRateLimiting(RateLimitPolicies.ApiKeyPerMinute)]
 public class VesselsController : ControllerBase
 {
     private readonly IvesselIdentifierResolver _resolver;
@@ -22,7 +27,7 @@ public class VesselsController : ControllerBase
         _logger = logger;
 
     }
-
+[Authorize]
     [HttpGet("{identifier}/positions/latest")]
     public async Task<ActionResult<LatestPositionResponse?>> GetLatestPosition(string identifier, [FromQuery] string? idtype)
     {

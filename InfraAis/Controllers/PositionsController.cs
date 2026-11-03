@@ -1,14 +1,19 @@
 namespace InfraAis.Controllers;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using InfraAis.Models;
+using InfraAis.Authentication;
 using InfraAis.Services;
+using Microsoft.AspNetCore.Authorization;
 using InfraAis.Repositories;
 using InfraAis.Validation;
+using InfraAis.Security;
 
 
 [ApiController]
 [Route("api/positions")]
+[EnableRateLimiting(RateLimitPolicies.ApiKeyPerMinute)]
 public class PositionsController : ControllerBase
 {
 
@@ -27,7 +32,7 @@ public class PositionsController : ControllerBase
         _positionQueryValidator = positionQueryValidator;
         _vesselAnalyticsService = vesselAnalyticsService;
     }
-
+[Authorize(Policy = AuthPolicies.CanRead)]
     [HttpGet]
     public async Task<ActionResult<PagedResponse>> GetPositions(
 
@@ -62,22 +67,25 @@ public class PositionsController : ControllerBase
             MaxSog = maxsog,
             NavStatus = navstatus
         };
-        var result = _positionQueryValidator.Validate(query);
-        if (!result.IsValid)
-        {
-            return BadRequest(new { error = result.Error });
-        }
-        else
-        {
+       var result = _positionQueryValidator.Validate(query);
 
-            var page = await _repo.GetPositionsAsync(result.Value!);
+if (!result.IsValid || result.Value is null)
+    return BadRequest(new { error = result.Error ?? "Invalid query" });
 
-            return Ok(page);
-        }
+var filters = result.Value;
+
+if (!HistoryWindowGuard.TryApply(filters, User, DateTimeOffset.UtcNow))
+    return Forbid();
+
+if (filters.From.HasValue && filters.To.HasValue && filters.From.Value >= filters.To.Value)
+    return BadRequest("Requested range is outside the allowed history window");
+
+var page = await _repo.GetPositionsAsync(filters);
+return Ok(page);
 
 
     }
-
+[Authorize(Policy = AuthPolicies.CanRead)]
     [HttpGet("/api/vessels/{identifier}/positions")]
     public async Task<ActionResult<PagedResponse>> GetPositionsByMmsiAsync(string identifier, [FromQuery] string? idtype, [FromQuery] DateTimeOffset? from,
         [FromQuery] DateTimeOffset? to,
@@ -130,25 +138,30 @@ public class PositionsController : ControllerBase
         };
 
         var result = _positionQueryValidator.Validate(query, isFleet: false);
-        if (!result.IsValid)
-        {
-            return BadRequest(new { error = result.Error });
-        }
-        else
-        {
 
-            var page = await _repo.GetPositionsByMmsiAsync(mmsi.Value, result.Value!);
-            return Ok(page);
+if (!result.IsValid || result.Value is null)
+    return BadRequest(new { error = result.Error ?? "Invalid query" });
 
-        }
+var filters = result.Value;
+
+if (!HistoryWindowGuard.TryApply(filters, User, DateTimeOffset.UtcNow))
+    return Forbid();
+
+if (filters.From.HasValue && filters.To.HasValue && filters.From.Value >= filters.To.Value)
+    return BadRequest("Requested range is outside the allowed history window");
+
+var page = await _repo.GetPositionsByMmsiAsync(mmsi.Value, filters);
+
+return Ok(page);
 
     }
-
+[Authorize(Policy = AuthPolicies.AnalyticsAccess)]
     [HttpGet("/api/vessels/{identifier}/analytics")]
 
     public async Task<ActionResult<VesselAnalyticsResponse>> GetVesselAnalyticsAsync(string identifier, [FromQuery] DateTimeOffset? from,
         [FromQuery] DateTimeOffset? to)
     {
+    
         if (identifier is null)
         {
             _logger.LogWarning("REJECT: malformed identifier '{Identifier}'", identifier);
@@ -183,12 +196,19 @@ public class PositionsController : ControllerBase
             _logger.LogWarning("REJECT: From={From} is later than To={To}", finalFrom, finalTo);
             return BadRequest(new { error = "From is later than To" });
         }
+var historyFilters = new PositionQueryFilters { From = finalFrom, To = finalTo };
+
+if (!HistoryWindowGuard.TryApply(historyFilters, User, DateTimeOffset.UtcNow))
+    return Forbid();
+
+if (historyFilters.From!.Value >= historyFilters.To!.Value)
+    return BadRequest("Requested range is outside the allowed history window");
 
         var query = new VesselAnalyticsValues
         {
-            Mmsi = mmsi.Value,
-            From = finalFrom,
-            To = finalTo
+           Mmsi = mmsi.Value,
+    From = historyFilters.From.Value,
+    To = historyFilters.To.Value
         };
         var result = await _vesselAnalyticsService.GetVesselAnalytics(query);
 
