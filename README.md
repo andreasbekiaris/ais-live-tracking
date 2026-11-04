@@ -8,6 +8,7 @@ A .NET 8 service that maintains a live connection to an AIS (Automatic Identific
 | 2 | Vessel lookup & latest position by MMSI or IMO |
 | 3 | Position history with filters & keyset pagination |
 | 4 | Per-vessel voyage analytics (distance, speed, time, idle, gaps, reporting health) |
+| 5 | API access: API keys & JWT, roles, plans, rate limits, monthly quota, history window |
 
 This project lives in the same solution (`infra.sln`) as the existing Position Tracking / Shipment Route Tracking API (`InfraApi`), but is a separate project (`InfraAis`) with its own database, configuration, and deployment concerns.
 
@@ -29,9 +30,10 @@ The service does five things, continuously:
 
 - **.NET 8 Web API** (controller-based) hosting a `BackgroundService` worker
 - **SQL Server** for storage
-- **Raw, parameterized SQL** via `Microsoft.Data.SqlClient` (no Entity Framework)
+- **Raw, parameterized SQL** via `Microsoft.Data.SqlClient` (no Entity Framework); Phase 5 repositories use **Dapper**
 - **System.Text.Json** for message parsing
-- **xUnit** for unit tests
+- **JWT Bearer** and a custom API-key handler for authentication; ASP.NET Core rate limiter
+- **xUnit** and **Moq** for unit tests
 - Structured logging via `ILogger`
 
 ---
@@ -44,16 +46,19 @@ infra/
 ├── InfraApi/            # existing Shipment Route Tracking API (separate concern)
 ├── InfraApi.Tests/      # tests for the above
 ├── InfraAis/            # THIS project — AIS ingestion service
-│   ├── Controllers/     # VesselsController, PositionsController (REST API)
-│   ├── Options/         # strongly-typed config (AisStream, Ingestion, AisDb, Analytics)
-│   ├── Models/          # DTOs (incoming feed shape), records (ready-to-store shape), API responses
+│   ├── Controllers/     # VesselsController, PositionsController, AuthController, AdminClientsController
+│   ├── Authentication/  # API-key handler, schemes, roles, policies, claim types
+│   ├── Security/        # ApiKeyGenerator, HistoryWindowGuard, AdminUserSeeder
+│   ├── Middleware/      # MonthlyQuotaMiddleware
+│   ├── Options/         # strongly-typed config (AisStream, Ingestion, AisDb, Analytics, Jwt)
+│   ├── Models/          # DTOs (incoming feed shape), records (ready-to-store shape), API responses, Auth models
 │   ├── Validation/      # AisValidator, PositionQueryValidator — pure validation/normalization logic
-│   ├── Repositories/    # IAisRepository + AisRepository (raw SQL)
+│   ├── Repositories/    # AisRepository (raw SQL); User, ApiClient, ApiKey, ApiUsage repositories
 │   ├── Services/        # AisIngestionService (background worker), VesselIdentifierResolver,
-│   │                    # VesselAnalyticsService
+│   │                    # VesselAnalyticsService, JwtTokenService
 │   ├── Utils/           # CursorCodec, NavStatusMapper, DistanceCalculator (Haversine)
-│   └── Program.cs       # DI wiring
-└── InfraAis.Tests/      # xUnit tests (validators, cursor codec, resolver, controllers, analytics)
+│   └── Program.cs       # DI wiring, authentication, authorization, rate limiting, middleware order
+└── InfraAis.Tests/      # xUnit tests (validators, cursor codec, resolver, controllers, analytics, auth, quota)
 ```
 
 ---
@@ -159,7 +164,13 @@ Non-secret settings live in `appsettings.json`. Secrets (the API key) are **neve
   "Analytics": {
     "GapThresholdHours": 1,
     "IdleThresholdHours": 0.5,
-    "StoppedSpeedThresholdKnots": 0.5
+    "StoppedSpeedThresholdKnots": 0.5,
+    "MinImpliedIntervalSeconds": 30
+  },
+  "Jwt": {
+    "Issuer": "InfraAis",
+    "Audience": "InfraAis.Admin",
+    "ExpirationMinutes": 30
   }
 }
 ```
@@ -178,6 +189,13 @@ Non-secret settings live in `appsettings.json`. Secrets (the API key) are **neve
 | `Analytics` | `GapThresholdHours` | Silence between two messages longer than this is a gap (default 1 h) |
 | `Analytics` | `IdleThresholdHours` | A continuous stop longer than this counts as idle (default 0.5 h) |
 | `Analytics` | `StoppedSpeedThresholdKnots` | SOG below this counts as stopped (default 0.5 kn) |
+| `Analytics` | `MinImpliedIntervalSeconds` | `maxImpliedKnots` is measured over at least this many seconds (default 30 s) |
+| `Jwt` | `Issuer` / `Audience` | Validated on every admin token |
+| `Jwt` | `ExpirationMinutes` | Token lifetime (default 30) |
+| `Jwt` | `SigningKeyBase64` | HMAC-SHA256 key, base64, at least 32 bytes; left out of source, provided via user-secrets/env |
+| `SeedAdmin` | `Username` / `Password` | Development only: admin user created at startup; provided via user-secrets |
+
+The app refuses to start if the `Jwt` section is missing or invalid, or the signing key is shorter than 32 bytes.
 
 Set the API key and connection string (development):
 
@@ -189,7 +207,21 @@ dotnet user-secrets set "AisStream:ApiKey" "<your-key>" --project InfraAis
 dotnet user-secrets set "ConnectionStrings:AisDb" "Server=localhost\SQLEXPRESS;Database=AisTrackingDB;Trusted_Connection=True;TrustServerCertificate=True;" --project InfraAis
 ```
 
-For a container, supply the key and connection string as environment variables (`AisStream__ApiKey`, `ConnectionStrings__AisDb`), which override `appsettings.json`.
+Set the JWT signing key and the development admin user:
+
+```bash
+dotnet user-secrets set "Jwt:SigningKeyBase64" "<base64 key, 32+ bytes>" --project InfraAis
+```
+
+```bash
+dotnet user-secrets set "SeedAdmin:Username" "<username>" --project InfraAis
+```
+
+```bash
+dotnet user-secrets set "SeedAdmin:Password" "<password>" --project InfraAis
+```
+
+For a container, supply the key and connection string as environment variables (`AisStream__ApiKey`, `ConnectionStrings__AisDb`, `Jwt__SigningKeyBase64`), which override `appsettings.json`.
 
 ---
 
@@ -469,6 +501,62 @@ All thresholds come from the `Analytics` configuration section; none are hard-co
 
 ---
 
+## Phase 5 — API access (keys, JWT, plans, limits)
+
+### Authentication
+
+| Caller | How | Notes |
+|---|---|---|
+| API client | `X-API-Key: ais_...` header (or `Authorization: ApiKey ais_...`) | Key is checked by its SHA-256 hash; only active, non-revoked keys pass. Gets role `ReadOnly` plus its plan's limits as claims |
+| Admin user | `Authorization: Bearer <jwt>` from `POST /api/auth/login` | HMAC-SHA256, issuer/audience/lifetime validated, 30 s clock skew |
+
+A policy scheme picks the handler per request: `X-API-Key` → API key, `Bearer` → JWT, otherwise API key (which returns no result → `401`).
+
+### Endpoints
+
+```
+POST /api/auth/login                          # username + password → JWT (5 attempts / minute / IP)
+
+POST /api/admin/clients                       # create client on a plan
+GET  /api/admin/clients                       # list clients
+GET  /api/admin/clients/{id}                  # one client
+PUT  /api/admin/clients/{id}/plan             # change plan
+POST /api/admin/clients/{id}/keys             # create key; raw key returned once (Cache-Control: no-store)
+GET  /api/admin/clients/{id}/keys             # list keys (prefix only, never the raw key)
+POST /api/admin/keys/{id}/revoke              # revoke key
+```
+
+### Authorization
+
+| Policy | Allowed | Used on |
+|---|---|---|
+| `AdminOnly` | role `Admin` | `/api/admin/*` |
+| `CanRead` | roles `Admin`, `Operator`, `ReadOnly` | vessels, latest position, position history |
+| `AnalyticsAccess` | `Admin`, or a plan with analytics enabled | `/api/vessels/{identifier}/analytics` |
+
+| Case | Response |
+|---|---|
+| No or invalid credentials | `401` |
+| Valid key, insufficient role or plan | `403` |
+| Per-minute rate limit hit | `429` with `Retry-After` |
+| Monthly quota used up | `429` `Monthly quota exceeded` |
+
+### Plans and limits
+
+Each client is on a plan (`plans` table) with `RateLimitPerMinute`, `MonthlyQuota` (null = unlimited), `MaxHistoryDays` (null = unlimited) and `AnalyticsEnabled`.
+
+- **Rate limit**: fixed 1-minute window per API key, size from the plan. JWT callers are not rate limited (except login).
+- **Monthly quota**: `MonthlyQuotaMiddleware` reserves a row in `api_usage` for every API-key request to `/api/*` inside a per-key SQL lock, and rejects with `429` once the calendar-month (UTC) count reaches the quota. Rejected `429` rows are not counted. The final status code is written back after the request; the endpoint is stored as the route template, cut to 128 characters.
+- **History window**: `HistoryWindowGuard` clamps `from`/`to` on history and analytics to the last `MaxHistoryDays`. No limit leaves the dates unchanged. An admin JWT has no limit; other JWT roles are rejected.
+
+Pipeline order: `UseAuthentication` → `UseAuthorization` → `UseRateLimiter` → `MonthlyQuotaMiddleware`, so requests rejected with `401`/`403` do not use rate limit or quota.
+
+### Tables
+
+`users`, `plans`, `api_clients`, `api_keys` (hash + prefix, `is_active`, `revoked_utc`), `api_usage` (`api_key_id`, `endpoint`, `status_code`, `occurred_utc`). These are not yet in `schema.aistrackingdb.sql`.
+
+---
+
 ## Testing
 
 Unit tests (`InfraAis.Tests`, xUnit) need no database or network; repositories are faked. They cover:
@@ -484,6 +572,12 @@ Unit tests (`InfraAis.Tests`, xUnit) need no database or network; repositories a
 - **Positions controller** (Phase 3) — 400/404/200 paths for both endpoints; IMO is resolved to MMSI before querying.
 - **Identifier resolver / vessels controller** (Phase 2) — MMSI vs IMO parsing, `idType` handling, IMO→MMSI resolution, 400/404/200 paths.
 - **Vessel analytics** (Phase 4) — hand-checkable fixtures on a single longitude: empty window, single point, gaps and the longest gap, stopped/underway/idle runs, unknown SOG, duplicate timestamps, nav-status breakdown, coverage, median interval, and thresholds read from options.
+- **API key generator** (Phase 5) — hash and prefix match the raw key; two calls give different keys.
+- **Auth controller** (Phase 5) — unknown username and wrong password → `401`; correct password returns a JWT.
+- **Admin clients controller** (Phase 5) — create/list/get client, change plan, create/list/revoke keys, 400/404 paths.
+- **Endpoint security metadata** (Phase 5) — each controller/action has the expected policy and rate-limit attributes.
+- **History window guard** (Phase 5) — limited plans clamp dates, unlimited plan leaves them unchanged, invalid limits and non-admin JWT rejected.
+- **Monthly quota middleware** (Phase 5) — reserve/complete flow, quota exceeded → `429`, unlimited quota, invalid quota claim rejected, failures logged without bypassing the quota, admin JWT and non-`/api` requests skipped.
 
 Run:
 
